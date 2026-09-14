@@ -1,5 +1,11 @@
 # Market Alert App
 
+> **📱 Android app:** the primary deliverable is now a standalone native Android
+> app with on-device monitoring, **native notifications**, and free WhatsApp
+> alerts — see [`android/`](android/README.md). Grab the ready-to-install APK
+> from the repo's **Actions** tab (built automatically in the cloud). The Python
+> service below remains as a desktop/server alternative.
+
 Monitors a configurable list of tickers, detects significant **price** and
 **volume** moves, and pushes a near-instant **Telegram** notification so you can
 decide quickly. **V1 = surveillance + alerting only — no automated order

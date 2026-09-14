@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.MarketTracker" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF101418</item>
+    </style>
+</resources>
