@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.deviloufr.markettracker.BuildConfig
 import com.deviloufr.markettracker.data.Settings
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -106,6 +107,12 @@ fun SettingsScreen(vm: MarketViewModel) {
                     "de la batterie pour des alertes fiables en arrière-plan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Version ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
             )
         }
     }

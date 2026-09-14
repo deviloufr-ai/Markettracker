@@ -1,15 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:scaleX="3.2"
-        android:scaleY="3.2"
-        android:translateX="15.6"
-        android:translateY="15.6">
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M3.5,18.49l6,-6.01l4,4L22,6.92l-1.41,-1.41l-7.09,7.97l-4,-4L2,16.99z" />
-    </group>
+    <!-- Rising bar chart (white, opaque) within the adaptive-icon safe zone.
+         Three bars of increasing height read clearly as a market/stats mark
+         and double as the monochrome (themed-icon) layer. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M28.5,79 L28.5,59.5 Q28.5,57 31,57 L39,57 Q41.5,57 41.5,59.5 L41.5,79 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M48,79 L48,48.5 Q48,46 50.5,46 L58.5,46 Q61,46 61,48.5 L61,79 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M67.5,79 L67.5,33.5 Q67.5,31 70,31 L78,31 Q80.5,31 80.5,33.5 L80.5,79 Z" />
+    <!-- Baseline the bars sit on. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M27,79 L82,79 Q84,79 84,81 L84,81 Q84,83 82,83 L27,83 Q25,83 25,81 L25,81 Q25,79 27,79 Z" />
 </vector>

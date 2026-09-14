@@ -11,8 +11,15 @@ android {
         applicationId "com.deviloufr.markettracker"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+
+        // --- Version management ---------------------------------------------
+        // Single source of truth for the app version. Bump versionName here on
+        // each release. versionCode auto-increments in CI (from VERSION_CODE,
+        // set to the GitHub run number) so every build is installable over the
+        // previous one; local builds fall back to a fixed value.
+        versionName "1.1.0"
+        versionCode System.getenv("VERSION_CODE")?.toInteger() ?: 2
+
         vectorDrawables { useSupportLibrary true }
     }
 
@@ -36,6 +43,7 @@ android {
     }
     buildFeatures {
         compose true
+        buildConfig true
     }
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.14'

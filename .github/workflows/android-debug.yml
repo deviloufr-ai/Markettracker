@@ -31,11 +31,20 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK with build number
+        working-directory: android
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "out/MarketTracker-debug-b${{ github.run_number }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: MarketTracker-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/out/*.apk
           if-no-files-found: error
