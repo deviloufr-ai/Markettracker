@@ -4,7 +4,10 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.deviloufr.markettracker.data.Asset
+import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.PriceApi
+import com.deviloufr.markettracker.data.PricePoint
 import com.deviloufr.markettracker.data.Repository
 import com.deviloufr.markettracker.data.Settings
 import com.deviloufr.markettracker.notify.WhatsAppSender
@@ -37,6 +40,13 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
             launch { api.getQuote(symbol)?.let { repo.recordQuote(it) } }
         }
     }
+
+    /** Fetch historical closes for the detail chart. Empty list = no data/error. */
+    suspend fun fetchHistory(symbol: String, range: HistoryRange): List<PricePoint> =
+        api.getHistory(symbol, range)
+
+    /** Live Yahoo symbol search for the asset picker. Empty list = no match/error. */
+    suspend fun searchAssets(query: String): List<Asset> = api.searchSymbols(query)
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {
         onResult(WhatsAppSender.send(settings.value, "✅ Message test MarketTracker"))

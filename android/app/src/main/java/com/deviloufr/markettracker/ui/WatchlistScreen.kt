@@ -1,6 +1,7 @@
 package com.deviloufr.markettracker.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,34 +25,31 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.deviloufr.markettracker.data.Quote
 import com.deviloufr.markettracker.ui.theme.Gain
 import com.deviloufr.markettracker.ui.theme.Loss
 
 @Composable
-fun WatchlistScreen(vm: MarketViewModel) {
+fun WatchlistScreen(
+    vm: MarketViewModel,
+    onTickerClick: (String) -> Unit = {},
+    onAddAssets: () -> Unit = {}
+) {
     val context = LocalContext.current
     val watchlist by vm.watchlist.collectAsState()
     val quotes by vm.quotes.collectAsState()
     val monitoring by vm.monitoring.collectAsState()
-    var newSymbol by remember { mutableStateOf("") }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -67,17 +65,21 @@ fun WatchlistScreen(vm: MarketViewModel) {
             )
         }
         item {
-            AddTickerRow(
-                value = newSymbol,
-                onValueChange = { newSymbol = it },
-                onAdd = {
-                    vm.addTicker(newSymbol)
-                    newSymbol = ""
-                }
-            )
+            FilledTonalButton(
+                onClick = onAddAssets,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Text("  Ajouter des actifs")
+            }
         }
         items(watchlist, key = { it }) { symbol ->
-            TickerCard(symbol = symbol, quote = quotes[symbol], onRemove = { vm.removeTicker(symbol) })
+            TickerCard(
+                symbol = symbol,
+                quote = quotes[symbol],
+                onClick = { onTickerClick(symbol) },
+                onRemove = { vm.removeTicker(symbol) }
+            )
         }
         if (watchlist.isEmpty()) {
             item { EmptyState("Aucun symbole", "Ajoutez un symbole comme AAPL ou TSLA pour commencer le suivi.") }
@@ -132,32 +134,9 @@ private fun MonitorCard(
 }
 
 @Composable
-private fun AddTickerRow(value: String, onValueChange: (String) -> Unit, onAdd: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text("Ajouter un symbole") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                imeAction = ImeAction.Done
-            )
-        )
-        FilledTonalButton(onClick = onAdd, enabled = value.isNotBlank()) {
-            Icon(Icons.Filled.Add, contentDescription = "Ajouter")
-        }
-    }
-}
-
-@Composable
-private fun TickerCard(symbol: String, quote: Quote?, onRemove: () -> Unit) {
+private fun TickerCard(symbol: String, quote: Quote?, onClick: () -> Unit, onRemove: () -> Unit) {
     val market = marketOf(symbol)
-    Card {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically

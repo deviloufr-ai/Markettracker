@@ -1,5 +1,6 @@
 package com.deviloufr.markettracker.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -32,7 +33,23 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 fun AppScaffold(vm: MarketViewModel = viewModel()) {
     var tab by remember { mutableStateOf(Tab.WATCHLIST) }
+    var detailSymbol by remember { mutableStateOf<String?>(null) }
+    var showPicker by remember { mutableStateOf(false) }
     val alerts by vm.alerts.collectAsState()
+
+    // A symbol detail screen is shown on top of the tabs when one is selected.
+    detailSymbol?.let { symbol ->
+        BackHandler { detailSymbol = null }
+        TickerDetailScreen(vm = vm, symbol = symbol, onBack = { detailSymbol = null })
+        return
+    }
+
+    // The asset picker is shown on top of the tabs while adding assets.
+    if (showPicker) {
+        BackHandler { showPicker = false }
+        AssetPickerScreen(vm = vm, onBack = { showPicker = false })
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -58,7 +75,11 @@ fun AppScaffold(vm: MarketViewModel = viewModel()) {
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                Tab.WATCHLIST -> WatchlistScreen(vm)
+                Tab.WATCHLIST -> WatchlistScreen(
+                    vm,
+                    onTickerClick = { detailSymbol = it },
+                    onAddAssets = { showPicker = true }
+                )
                 Tab.ALERTS -> AlertsScreen(vm)
                 Tab.SETTINGS -> SettingsScreen(vm)
             }
