@@ -24,9 +24,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    WATCHLIST("Watchlist", Icons.Filled.ShowChart),
-    ALERTS("Alerts", Icons.Filled.Notifications),
-    SETTINGS("Settings", Icons.Filled.Settings)
+    WATCHLIST("Suivi", Icons.Filled.ShowChart),
+    ALERTS("Alertes", Icons.Filled.Notifications),
+    SETTINGS("Réglages", Icons.Filled.Settings)
 }
 
 @Composable

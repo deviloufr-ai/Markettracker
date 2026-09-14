@@ -22,6 +22,13 @@ data class AlertEvent(
     val ts: Long
 )
 
+/** French label for an alert [AlertEvent.reason] key, for display in the UI/notifications. */
+fun reasonLabelFr(reason: String): String = when (reason) {
+    "price_move" -> "variation de prix"
+    "volume_spike" -> "pic de volume"
+    else -> reason.replace('_', ' ')
+}
+
 /** User-tunable monitoring settings. */
 data class Settings(
     val priceChangePct: Double = 3.0,

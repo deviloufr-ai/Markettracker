@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.IBinder
 import com.deviloufr.markettracker.data.PriceApi
 import com.deviloufr.markettracker.data.Repository
+import com.deviloufr.markettracker.data.reasonLabelFr
 import com.deviloufr.markettracker.detection.AnomalyDetector
 import com.deviloufr.markettracker.notify.Notifier
 import com.deviloufr.markettracker.notify.WhatsAppSender
@@ -39,7 +40,7 @@ class MonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         repo = Repository.get(this)
-        startForeground(NOTIF_ID, Notifier.buildMonitorNotification(this, "Starting…"))
+        startForeground(NOTIF_ID, Notifier.buildMonitorNotification(this, "Démarrage…"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -80,9 +81,9 @@ class MonitorService : Service() {
                     Notifier.showAlert(this@MonitorService, trigger)
                     repo.recordAlert(trigger)
                     if (settings.whatsappEnabled) {
-                        val msg = "🚨 ${trigger.symbol} — ${trigger.reason.replace('_', ' ')}\n" +
+                        val msg = "🚨 ${trigger.symbol} — ${reasonLabelFr(trigger.reason)}\n" +
                             trigger.detail + "\n" +
-                            String.format(Locale.US, "Price: %.2f", trigger.price)
+                            String.format(Locale.US, "Prix : %.2f", trigger.price)
                         WhatsAppSender.send(settings, msg)
                     }
                 }
@@ -92,7 +93,7 @@ class MonitorService : Service() {
 
     private fun updateMonitorNotification(count: Int) {
         val nm = getSystemService(NotificationManager::class.java) ?: return
-        val text = if (count == 0) "No tickers in watchlist" else "Watching $count tickers"
+        val text = if (count == 0) "Aucun actif suivi" else "Surveillance de $count actifs"
         nm.notify(NOTIF_ID, Notifier.buildMonitorNotification(this, text))
     }
 

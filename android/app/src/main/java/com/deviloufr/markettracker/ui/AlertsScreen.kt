@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,17 +36,17 @@ fun AlertsScreen(vm: MarketViewModel) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Alert history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Historique des alertes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (alerts.isNotEmpty()) {
                 TextButton(onClick = { vm.clearAlerts() }) {
                     Icon(Icons.Filled.DeleteSweep, contentDescription = null)
-                    Text("  Clear")
+                    Text("  Effacer")
                 }
             }
         }
 
         if (alerts.isEmpty()) {
-            EmptyState("No alerts yet", "Alerts appear here when a ticker crosses your thresholds while monitoring is on.")
+            EmptyState("Aucune alerte", "Les alertes apparaissent ici lorsqu'un actif franchit vos seuils pendant la surveillance.")
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -63,6 +64,7 @@ fun AlertsScreen(vm: MarketViewModel) {
 @Composable
 private fun AlertRow(alert: AlertEvent) {
     val isUp = !alert.detail.contains("🔻")
+    val market = marketOf(alert.symbol)
     Card {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
@@ -70,7 +72,18 @@ private fun AlertRow(alert: AlertEvent) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(alert.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        market.icon,
+                        contentDescription = market.label,
+                        tint = market.tint,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(alert.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 Text(
                     timeAgo(alert.ts),
                     style = MaterialTheme.typography.bodySmall,
@@ -83,7 +96,7 @@ private fun AlertRow(alert: AlertEvent) {
                 color = if (alert.reason == "price_move") (if (isUp) Gain else Loss) else MaterialTheme.colorScheme.onSurface
             )
             Text(
-                "at ${fmtPrice(alert.price)}",
+                "à ${fmtPrice(alert.price)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

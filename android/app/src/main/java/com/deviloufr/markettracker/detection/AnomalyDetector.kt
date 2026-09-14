@@ -30,7 +30,7 @@ class AnomalyDetector {
                 val arrow = if (change > 0) "🔺" else "🔻" // 🔺 / 🔻
                 val detail = String.format(
                     Locale.US,
-                    "%s %+.2f%% over ~%dm (%.2f → %.2f)",
+                    "%s %+.2f%% en ~%dmin (%.2f → %.2f)",
                     arrow, change, s.priceWindowMinutes, baseline, quote.price
                 )
                 triggers.add(AlertEvent(quote.symbol, "price_move", detail, quote.price, quote.ts))
@@ -47,7 +47,7 @@ class AnomalyDetector {
                     if (ratio >= s.volumeSpikeFactor) {
                         val detail = String.format(
                             Locale.US,
-                            "📊 volume %.1f× the %d-sample average",
+                            "📊 volume %.1f× la moyenne sur %d échantillons",
                             ratio, priorVolumes.size
                         )
                         triggers.add(AlertEvent(quote.symbol, "volume_spike", detail, quote.price, quote.ts))

@@ -39,6 +39,6 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {
-        onResult(WhatsAppSender.send(settings.value, "✅ MarketTracker test message"))
+        onResult(WhatsAppSender.send(settings.value, "✅ Message test MarketTracker"))
     }
 }

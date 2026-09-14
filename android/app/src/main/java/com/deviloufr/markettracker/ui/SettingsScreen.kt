@@ -41,32 +41,32 @@ fun SettingsScreen(vm: MarketViewModel) {
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Réglages", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
-        SettingsCard("Detection thresholds") {
+        SettingsCard("Seuils de détection") {
             LabeledSlider(
-                label = "Price move",
+                label = "Variation de prix",
                 value = settings.priceChangePct.toFloat(),
                 range = 0.5f..15f,
                 display = { String.format(Locale.US, "±%.1f%%", it) },
                 onCommit = { v -> vm.updateSettings { it.copy(priceChangePct = (v * 10).roundToInt() / 10.0) } }
             )
             LabeledSlider(
-                label = "Price window",
+                label = "Fenêtre de prix",
                 value = settings.priceWindowMinutes.toFloat(),
                 range = 1f..30f,
                 display = { "${it.roundToInt()} min" },
                 onCommit = { v -> vm.updateSettings { it.copy(priceWindowMinutes = v.roundToInt()) } }
             )
             LabeledSlider(
-                label = "Volume spike",
+                label = "Pic de volume",
                 value = settings.volumeSpikeFactor.toFloat(),
                 range = 1.5f..10f,
                 display = { String.format(Locale.US, "%.1f×", it) },
                 onCommit = { v -> vm.updateSettings { it.copy(volumeSpikeFactor = (v * 10).roundToInt() / 10.0) } }
             )
             LabeledSlider(
-                label = "Volume avg. samples",
+                label = "Échantillons moy. volume",
                 value = settings.volumeMaPeriods.toFloat(),
                 range = 5f..60f,
                 display = { "${it.roundToInt()}" },
@@ -74,16 +74,16 @@ fun SettingsScreen(vm: MarketViewModel) {
             )
         }
 
-        SettingsCard("Timing") {
+        SettingsCard("Cadence") {
             LabeledSlider(
-                label = "Poll interval",
+                label = "Intervalle de sondage",
                 value = settings.pollIntervalSeconds.toFloat(),
                 range = 15f..300f,
                 display = { "${it.roundToInt()} s" },
                 onCommit = { v -> vm.updateSettings { it.copy(pollIntervalSeconds = v.roundToInt()) } }
             )
             LabeledSlider(
-                label = "Alert cooldown",
+                label = "Délai entre alertes",
                 value = settings.cooldownMinutes.toFloat(),
                 range = 1f..60f,
                 display = { "${it.roundToInt()} min" },
@@ -94,15 +94,16 @@ fun SettingsScreen(vm: MarketViewModel) {
         WhatsAppCard(settings = settings, vm = vm, onTest = { ok ->
             Toast.makeText(
                 context,
-                if (ok) "WhatsApp test sent ✅" else "Failed — check phone, key & that WhatsApp is enabled",
+                if (ok) "Test WhatsApp envoyé ✅" else "Échec — vérifiez le téléphone, la clé et que WhatsApp est activé",
                 Toast.LENGTH_LONG
             ).show()
         })
 
-        SettingsCard("About") {
+        SettingsCard("À propos") {
             Text(
-                "Prices come from Yahoo Finance (unofficial, no key). Monitoring runs on-device " +
-                    "as a foreground service; keep battery optimisation off for reliable background alerts.",
+                "Les prix proviennent de Yahoo Finance (non officiel, sans clé). La surveillance " +
+                    "s'exécute sur l'appareil via un service au premier plan ; désactivez l'optimisation " +
+                    "de la batterie pour des alertes fiables en arrière-plan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -155,22 +156,23 @@ private fun WhatsAppCard(settings: Settings, vm: MarketViewModel, onTest: (Boole
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("WhatsApp alerts (free)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Alertes WhatsApp (gratuit)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Switch(
                     checked = settings.whatsappEnabled,
                     onCheckedChange = { on -> vm.updateSettings { it.copy(whatsappEnabled = on) } }
                 )
             }
             Text(
-                "Uses CallMeBot (free, personal). Setup: add +34 621 331 709 to contacts, send it " +
-                    "\"I allow callmebot to send me messages\" on WhatsApp, and it replies with your API key.",
+                "Utilise CallMeBot (gratuit, personnel). Configuration : ajoutez +34 621 331 709 à vos " +
+                    "contacts, envoyez-lui « I allow callmebot to send me messages » sur WhatsApp, et il " +
+                    "vous répond avec votre clé API.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             OutlinedTextField(
                 value = phone,
                 onValueChange = { phone = it; vm.updateSettings { s -> s.copy(whatsappPhone = it) } },
-                label = { Text("Your phone (e.g. +15551234567)") },
+                label = { Text("Votre téléphone (ex. +33612345678)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
@@ -178,12 +180,12 @@ private fun WhatsAppCard(settings: Settings, vm: MarketViewModel, onTest: (Boole
             OutlinedTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it; vm.updateSettings { s -> s.copy(whatsappApiKey = it) } },
-                label = { Text("CallMeBot API key") },
+                label = { Text("Clé API CallMeBot") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedButton(onClick = { vm.sendTestWhatsApp(onTest) }) {
-                Text("Send test message")
+                Text("Envoyer un message test")
             }
         }
     }

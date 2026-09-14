@@ -15,13 +15,13 @@ fun fmtVolume(value: Double): String = when {
 
 fun timeAgo(tsMillis: Long): String {
     val diff = System.currentTimeMillis() - tsMillis
-    if (diff < 0) return "just now"
+    if (diff < 0) return "à l'instant"
     val sec = diff / 1000
     return when {
-        sec < 10 -> "just now"
-        sec < 60 -> "${sec}s ago"
-        sec < 3600 -> "${sec / 60}m ago"
-        sec < 86400 -> "${sec / 3600}h ago"
-        else -> "${sec / 86400}d ago"
+        sec < 10 -> "à l'instant"
+        sec < 60 -> "il y a ${sec}s"
+        sec < 3600 -> "il y a ${sec / 60}min"
+        sec < 86400 -> "il y a ${sec / 3600}h"
+        else -> "il y a ${sec / 86400}j"
     }
 }

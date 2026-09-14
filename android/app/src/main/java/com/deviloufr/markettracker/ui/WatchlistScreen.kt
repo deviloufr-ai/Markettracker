@@ -1,10 +1,13 @@
 package com.deviloufr.markettracker.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -29,8 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -75,7 +80,7 @@ fun WatchlistScreen(vm: MarketViewModel) {
             TickerCard(symbol = symbol, quote = quotes[symbol], onRemove = { vm.removeTicker(symbol) })
         }
         if (watchlist.isEmpty()) {
-            item { EmptyState("No tickers yet", "Add a symbol like AAPL or TSLA to start tracking.") }
+            item { EmptyState("Aucun symbole", "Ajoutez un symbole comme AAPL ou TSLA pour commencer le suivi.") }
         }
     }
 }
@@ -96,30 +101,30 @@ private fun MonitorCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                if (monitoring) "● Monitoring active" else "○ Monitoring stopped",
+                if (monitoring) "● Surveillance active" else "○ Surveillance arrêtée",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                if (monitoring) "Watching $tickerCount tickers in the background. You'll get a notification on each alert."
-                else "Start monitoring to poll prices and receive native + WhatsApp alerts.",
+                if (monitoring) "Surveillance de $tickerCount actifs en arrière-plan. Vous recevrez une notification à chaque alerte."
+                else "Démarrez la surveillance pour suivre les prix et recevoir des alertes natives + WhatsApp.",
                 style = MaterialTheme.typography.bodyMedium
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (monitoring) {
                     Button(onClick = onStop) {
                         Icon(Icons.Filled.Stop, contentDescription = null)
-                        Text("  Stop")
+                        Text("  Arrêter")
                     }
                 } else {
                     Button(onClick = onStart) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Text("  Start")
+                        Text("  Démarrer")
                     }
                 }
                 OutlinedButton(onClick = onRefresh) {
                     Icon(Icons.Filled.Refresh, contentDescription = null)
-                    Text("  Refresh")
+                    Text("  Actualiser")
                 }
             }
         }
@@ -135,7 +140,7 @@ private fun AddTickerRow(value: String, onValueChange: (String) -> Unit, onAdd: 
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            label = { Text("Add ticker") },
+            label = { Text("Ajouter un symbole") },
             singleLine = true,
             modifier = Modifier.weight(1f),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -144,23 +149,35 @@ private fun AddTickerRow(value: String, onValueChange: (String) -> Unit, onAdd: 
             )
         )
         FilledTonalButton(onClick = onAdd, enabled = value.isNotBlank()) {
-            Icon(Icons.Filled.Add, contentDescription = "Add")
+            Icon(Icons.Filled.Add, contentDescription = "Ajouter")
         }
     }
 }
 
 @Composable
 private fun TickerCard(symbol: String, quote: Quote?, onRemove: () -> Unit) {
+    val market = marketOf(symbol)
     Card {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(market.tint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(market.icon, contentDescription = market.label, tint = market.tint)
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 val sub = when {
-                    quote == null -> "No data yet"
+                    quote == null -> "${market.label} · Aucune donnée"
                     else -> buildString {
+                        append(market.label)
+                        append(" · ")
                         append(timeAgo(quote.ts))
                         quote.volume?.let { append(" · vol ${fmtVolume(it)}") }
                     }
@@ -184,7 +201,7 @@ private fun TickerCard(symbol: String, quote: Quote?, onRemove: () -> Unit) {
                 }
             }
             IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Delete, contentDescription = "Remove $symbol", tint = MaterialTheme.colorScheme.outline)
+                Icon(Icons.Filled.Delete, contentDescription = "Supprimer $symbol", tint = MaterialTheme.colorScheme.outline)
             }
         }
     }

@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.deviloufr.markettracker.MainActivity
 import com.deviloufr.markettracker.R
 import com.deviloufr.markettracker.data.AlertEvent
+import com.deviloufr.markettracker.data.reasonLabelFr
 import java.util.Locale
 
 object Notifier {
@@ -21,15 +22,15 @@ object Notifier {
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         val monitor = NotificationChannel(
-            CHANNEL_MONITOR, "Monitoring", NotificationManager.IMPORTANCE_LOW
+            CHANNEL_MONITOR, "Surveillance", NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Ongoing market monitoring status"
+            description = "État de la surveillance du marché en cours"
             setShowBadge(false)
         }
         val alerts = NotificationChannel(
-            CHANNEL_ALERTS, "Market alerts", NotificationManager.IMPORTANCE_HIGH
+            CHANNEL_ALERTS, "Alertes de marché", NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Price and volume anomaly alerts"
+            description = "Alertes d'anomalies de prix et de volume"
             enableVibration(true)
         }
         nm.createNotificationChannel(monitor)
@@ -47,8 +48,8 @@ object Notifier {
 
     fun showAlert(context: Context, event: AlertEvent) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        val title = "${event.symbol} — ${event.reason.replace('_', ' ')}"
-        val body = "${event.detail}\n" + String.format(Locale.US, "Price: %.2f", event.price)
+        val title = "${event.symbol} — ${reasonLabelFr(event.reason)}"
+        val body = "${event.detail}\n" + String.format(Locale.US, "Prix : %.2f", event.price)
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
             .setContentTitle(title)
             .setContentText(event.detail)
