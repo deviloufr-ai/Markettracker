@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Assets to monitor + detection thresholds.
+# Any key under "defaults" can be overridden per-ticker.
+# ---------------------------------------------------------------------------
+
+# How often to poll every ticker (seconds).
+poll_interval_seconds: 30
+
+defaults:
+  price_change_pct: 3.0      # alert if |price change| >= this % over the window
+  price_window_minutes: 5    # sliding window used for the price-change check
+  volume_spike_factor: 3.0   # alert if volume >= factor * moving-average volume
+  volume_ma_periods: 20      # number of prior samples in the volume moving average
+  cooldown_minutes: 15       # min. delay between two alerts of the same type/ticker
+
+tickers:
+  - symbol: AAPL
+  - symbol: MSFT
+  - symbol: NVDA
+    price_change_pct: 4.0
+  - symbol: TSLA
+    price_change_pct: 5.0
+    volume_spike_factor: 4.0
+  - symbol: AMZN
+  - symbol: GOOGL
+  - symbol: META
+  - symbol: AMD
+  - symbol: SPY
+  - symbol: QQQ

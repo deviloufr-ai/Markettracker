@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Secrets & local data
+.env
+*.db
+*.db-journal
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

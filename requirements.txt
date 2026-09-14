@@ -1,0 +1,8 @@
+# --- runtime ---
+httpx>=0.27,<1.0        # async HTTP client (price feeds, Telegram)
+PyYAML>=6.0             # tickers.yaml config
+python-dotenv>=1.0      # load API keys from .env
+feedparser>=6.0         # optional RSS news feed (V2, disabled by default)
+
+# --- dev / test ---
+pytest>=8.0
