@@ -64,7 +64,6 @@ fun AlertsScreen(vm: MarketViewModel) {
 @Composable
 private fun AlertRow(alert: AlertEvent) {
     val isUp = !alert.detail.contains("🔻")
-    val market = marketOf(alert.symbol)
     Card {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
@@ -76,12 +75,7 @@ private fun AlertRow(alert: AlertEvent) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        market.icon,
-                        contentDescription = market.label,
-                        tint = market.tint,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    AssetLogo(symbol = alert.symbol, size = 24.dp)
                     Text(alert.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 Text(

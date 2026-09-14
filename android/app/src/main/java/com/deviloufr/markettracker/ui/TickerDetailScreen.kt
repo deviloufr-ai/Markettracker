@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,8 +47,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.PricePoint
+import com.deviloufr.markettracker.data.Quote
+import com.deviloufr.markettracker.data.TechnicalSignals
+import com.deviloufr.markettracker.data.TrendAnalysis
+import com.deviloufr.markettracker.data.verdictLabelFr
 import com.deviloufr.markettracker.ui.theme.Gain
 import com.deviloufr.markettracker.ui.theme.Loss
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,13 +83,16 @@ fun TickerDetailScreen(vm: MarketViewModel, symbol: String, onBack: () -> Unit) 
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(symbol, fontWeight = FontWeight.Bold)
-                        Text(
-                            market.label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AssetLogo(symbol = symbol, size = 32.dp)
+                        Column(Modifier.padding(start = 10.dp)) {
+                            Text(symbol, fontWeight = FontWeight.Bold)
+                            Text(
+                                market.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -125,7 +137,100 @@ fun TickerDetailScreen(vm: MarketViewModel, symbol: String, onBack: () -> Unit) 
                 }
             }
 
-            (state as? HistoryUiState.Loaded)?.let { RangeStats(it.points) }
+            (state as? HistoryUiState.Loaded)?.let {
+                RangeStats(it.points)
+                AiSection(vm = vm, symbol = symbol, quote = quote, points = it.points)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiSection(vm: MarketViewModel, symbol: String, quote: Quote?, points: List<PricePoint>) {
+    val settings by vm.settings.collectAsState()
+    val signals = remember(points, quote) { vm.computeSignals(points, quote) }
+    val scope = rememberCoroutineScope()
+    var ai by remember(symbol) { mutableStateOf<AiUiState<TrendAnalysis>>(AiUiState.Idle) }
+
+    fun runAnalysis() {
+        ai = AiUiState.Loading
+        scope.launch {
+            ai = vm.analyzeWithAi(symbol, quote, signals).fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Analyse impossible.") }
+            )
+        }
+    }
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Analyse IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                VerdictPill(signals.verdict, verdictLabelFr(signals.verdict))
+            }
+
+            // On-device technical read (always shown, free).
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                StatItem("Momentum", fmtPct(signals.momentumPct), if (signals.momentumPct >= 0) Gain else Loss)
+                StatItem("RSI(14)", signals.rsi?.let { String.format(Locale.US, "%.0f", it) } ?: "—")
+                StatItem("Volatilité", String.format(Locale.US, "%.1f%%", signals.volatilityPct))
+                StatItem("Confiance", "${signals.confidence}%")
+            }
+            Text(signals.trendLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (signals.rationale.isNotEmpty()) BulletList(signals.rationale)
+
+            // Optional Claude deep analysis (web search) — only with a key.
+            if (settings.anthropicApiKey.isBlank()) {
+                Text(
+                    "Ajoutez votre clé API Anthropic dans Réglages pour une analyse approfondie : "
+                        + "actualités du web, sentiment des analystes et perspectives.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                when (val s = ai) {
+                    AiUiState.Idle -> Button(onClick = { runAnalysis() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("🔮  Analyse IA approfondie")
+                    }
+                    AiUiState.Loading -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Recherche sur le web et analyse…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    is AiUiState.Error -> AiErrorRow(s.message) { runAnalysis() }
+                    is AiUiState.Success -> AiAnalysisContent(s.data, onRefresh = { runAnalysis() })
+                }
+            }
+
+            AiDisclaimer()
+        }
+    }
+}
+
+@Composable
+private fun AiAnalysisContent(a: TrendAnalysis, onRefresh: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            DirectionPill(a.direction, a.direction.replaceFirstChar { it.uppercase() })
+            Text("Confiance ${a.confidence}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (a.summary.isNotBlank()) Text(a.summary, style = MaterialTheme.typography.bodyMedium)
+        if (a.drivers.isNotEmpty()) {
+            Text("Facteurs clés", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            BulletList(a.drivers)
+        }
+        if (a.horizon.isNotBlank()) {
+            Text("Horizon : ${a.horizon}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        AiSources(a.sources)
+        TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text("Actualiser l'analyse")
         }
     }
 }

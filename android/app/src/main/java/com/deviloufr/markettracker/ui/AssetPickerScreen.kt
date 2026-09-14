@@ -331,15 +331,7 @@ private fun AssetRow(asset: Asset, selected: Boolean, onToggle: () -> Unit) {
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(market.tint.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(market.icon, contentDescription = market.label, tint = market.tint)
-        }
+        AssetLogo(symbol = asset.symbol, size = 40.dp)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(asset.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             Text(

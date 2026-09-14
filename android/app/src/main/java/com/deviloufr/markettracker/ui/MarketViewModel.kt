@@ -4,12 +4,18 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.deviloufr.markettracker.data.AiTrendApi
 import com.deviloufr.markettracker.data.Asset
 import com.deviloufr.markettracker.data.HistoryRange
+import com.deviloufr.markettracker.data.MarketBrief
 import com.deviloufr.markettracker.data.PriceApi
 import com.deviloufr.markettracker.data.PricePoint
+import com.deviloufr.markettracker.data.Quote
 import com.deviloufr.markettracker.data.Repository
 import com.deviloufr.markettracker.data.Settings
+import com.deviloufr.markettracker.data.TechnicalAnalysis
+import com.deviloufr.markettracker.data.TechnicalSignals
+import com.deviloufr.markettracker.data.TrendAnalysis
 import com.deviloufr.markettracker.notify.WhatsAppSender
 import com.deviloufr.markettracker.service.MonitorService
 import kotlinx.coroutines.launch
@@ -18,6 +24,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = Repository.get(app)
     private val api = PriceApi()
+    private val aiApi = AiTrendApi()
 
     val quotes = repo.quotes
     val watchlist = repo.watchlist
@@ -47,6 +54,29 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Live Yahoo symbol search for the asset picker. Empty list = no match/error. */
     suspend fun searchAssets(query: String): List<Asset> = api.searchSymbols(query)
+
+    /** Pure, on-device technical read of a symbol from its history + live quote (no network). */
+    fun computeSignals(points: List<PricePoint>, quote: Quote?): TechnicalSignals =
+        TechnicalAnalysis.analyze(points, quote)
+
+    /** True once the user has entered an Anthropic key, i.e. the deep AI analysis is available. */
+    fun aiEnabled(): Boolean = settings.value.anthropicApiKey.isNotBlank()
+
+    /** Optional Claude deep analysis (with web search) for one symbol. */
+    suspend fun analyzeWithAi(
+        symbol: String,
+        quote: Quote?,
+        signals: TechnicalSignals
+    ): Result<TrendAnalysis> {
+        val s = settings.value
+        return aiApi.analyze(symbol, quote, signals, s.anthropicApiKey, s.aiModel)
+    }
+
+    /** Optional Claude watchlist-wide market brief (with web search). */
+    suspend fun marketBrief(): Result<MarketBrief> {
+        val s = settings.value
+        return aiApi.brief(watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel)
+    }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {
         onResult(WhatsAppSender.send(settings.value, "✅ Message test MarketTracker"))

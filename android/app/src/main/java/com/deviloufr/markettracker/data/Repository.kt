@@ -118,6 +118,8 @@ private object Keys {
     val WA_ENABLED = booleanPreferencesKey("wa_enabled")
     val WA_PHONE = stringPreferencesKey("wa_phone")
     val WA_KEY = stringPreferencesKey("wa_key")
+    val AI_KEY = stringPreferencesKey("ai_key")
+    val AI_MODEL = stringPreferencesKey("ai_model")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
     val MONITORING = booleanPreferencesKey("monitoring")
@@ -132,7 +134,9 @@ private fun Preferences.toSettings() = Settings(
     cooldownMinutes = this[Keys.COOLDOWN_MIN] ?: 15,
     whatsappEnabled = this[Keys.WA_ENABLED] ?: false,
     whatsappPhone = this[Keys.WA_PHONE] ?: "",
-    whatsappApiKey = this[Keys.WA_KEY] ?: ""
+    whatsappApiKey = this[Keys.WA_KEY] ?: "",
+    anthropicApiKey = this[Keys.AI_KEY] ?: "",
+    aiModel = this[Keys.AI_MODEL] ?: AiModels.DEFAULT
 )
 
 private fun MutablePreferences.putSettings(s: Settings) {
@@ -145,6 +149,8 @@ private fun MutablePreferences.putSettings(s: Settings) {
     this[Keys.WA_ENABLED] = s.whatsappEnabled
     this[Keys.WA_PHONE] = s.whatsappPhone
     this[Keys.WA_KEY] = s.whatsappApiKey
+    this[Keys.AI_KEY] = s.anthropicApiKey
+    this[Keys.AI_MODEL] = s.aiModel
 }
 
 private fun parseList(s: String): List<String> =

@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,8 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.deviloufr.markettracker.BuildConfig
+import com.deviloufr.markettracker.data.AiModels
 import com.deviloufr.markettracker.data.Settings
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -99,6 +103,8 @@ fun SettingsScreen(vm: MarketViewModel) {
                 Toast.LENGTH_LONG
             ).show()
         })
+
+        AiCard(settings = settings, vm = vm)
 
         SettingsCard("À propos") {
             Text(
@@ -193,6 +199,46 @@ private fun WhatsAppCard(settings: Settings, vm: MarketViewModel, onTest: (Boole
             )
             OutlinedButton(onClick = { vm.sendTestWhatsApp(onTest) }) {
                 Text("Envoyer un message test")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiCard(settings: Settings, vm: MarketViewModel) {
+    var apiKey by remember { mutableStateOf(settings.anthropicApiKey) }
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Analyse IA (optionnel)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "L'analyse technique locale (tendance, RSI, momentum) est toujours gratuite et sans clé. "
+                    + "Pour l'analyse approfondie — recherche web des actualités et du sentiment des analystes — "
+                    + "renseignez votre propre clé API Anthropic (console.anthropic.com). La clé est stockée sur "
+                    + "l'appareil et n'est utilisée qu'à la demande ; chaque analyse coûte quelques centimes sur "
+                    + "votre compte. Informatif uniquement, pas un conseil financier.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it; vm.updateSettings { s -> s.copy(anthropicApiKey = it.trim()) } },
+                label = { Text("Clé API Anthropic (sk-ant-…)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
+            Text("Modèle", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(AiModels.OPUS, AiModels.SONNET).forEach { id ->
+                    FilterChip(
+                        selected = settings.aiModel == id,
+                        onClick = { vm.updateSettings { it.copy(aiModel = id) } },
+                        label = { Text(AiModels.label(id)) }
+                    )
+                }
             }
         }
     }
