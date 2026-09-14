@@ -15,3 +15,7 @@ env/
 .DS_Store
 .idea/
 .vscode/
+
+# Build artifacts
+*.apk
+/apk-out/
