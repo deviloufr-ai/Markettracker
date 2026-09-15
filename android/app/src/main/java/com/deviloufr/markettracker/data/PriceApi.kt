@@ -166,12 +166,18 @@ class PriceApi(
 /**
  * Time windows offered on the history chart, mapped to Yahoo chart parameters.
  * Yahoo has no <5d preset, so [WEEK] uses an explicit period1/period2 window.
+ * Longer windows step the candle interval up (daily, then weekly) to keep the
+ * point count reasonable.
  */
 enum class HistoryRange(val label: String, val interval: String) {
     HOURS("Heures", "5m"),
     DAYS("Jours", "30m"),
     WEEK("Semaine", "60m"),
-    MONTH("Mois", "1d");
+    MONTH("Mois", "1d"),
+    MONTH_3("3 mois", "1d"),
+    MONTH_6("6 mois", "1d"),
+    YEAR("1 an", "1d"),
+    YEAR_5("5 ans", "1wk");
 
     /** The `range=…` or `period1/period2=…` fragment of the Yahoo chart query. */
     fun rangeQuery(nowMillis: Long = System.currentTimeMillis()): String = when (this) {
@@ -182,5 +188,9 @@ enum class HistoryRange(val label: String, val interval: String) {
             "period1=${nowSec - 7L * 24 * 3600}&period2=$nowSec"
         }
         MONTH -> "range=1mo"
+        MONTH_3 -> "range=3mo"
+        MONTH_6 -> "range=6mo"
+        YEAR -> "range=1y"
+        YEAR_5 -> "range=5y"
     }
 }

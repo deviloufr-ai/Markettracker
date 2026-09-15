@@ -152,6 +152,13 @@ private fun AiSection(vm: MarketViewModel, symbol: String, quote: Quote?, points
     val scope = rememberCoroutineScope()
     var ai by remember(symbol) { mutableStateOf<AiUiState<TrendAnalysis>>(AiUiState.Idle) }
 
+    // Restore a previously generated analysis for this symbol so leaving and returning
+    // (or restarting the app) does not require regenerating it.
+    val cachedEntry = vm.aiAnalyses.collectAsState().value[symbol]
+    LaunchedEffect(symbol, cachedEntry) {
+        if (ai is AiUiState.Idle && cachedEntry != null) ai = AiUiState.Success(cachedEntry.analysis)
+    }
+
     fun runAnalysis() {
         ai = AiUiState.Loading
         scope.launch {
@@ -204,7 +211,11 @@ private fun AiSection(vm: MarketViewModel, symbol: String, quote: Quote?, points
                         Text("Recherche sur le web et analyse…", style = MaterialTheme.typography.bodyMedium)
                     }
                     is AiUiState.Error -> AiErrorRow(s.message) { runAnalysis() }
-                    is AiUiState.Success -> AiAnalysisContent(s.data, onRefresh = { runAnalysis() })
+                    is AiUiState.Success -> AiAnalysisContent(
+                        a = s.data,
+                        generatedAt = cachedEntry?.ts,
+                        onRefresh = { runAnalysis() }
+                    )
                 }
             }
 
@@ -214,7 +225,7 @@ private fun AiSection(vm: MarketViewModel, symbol: String, quote: Quote?, points
 }
 
 @Composable
-private fun AiAnalysisContent(a: TrendAnalysis, onRefresh: () -> Unit) {
+private fun AiAnalysisContent(a: TrendAnalysis, generatedAt: Long?, onRefresh: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DirectionPill(a.direction, a.direction.replaceFirstChar { it.uppercase() })
@@ -229,6 +240,13 @@ private fun AiAnalysisContent(a: TrendAnalysis, onRefresh: () -> Unit) {
             Text("Horizon : ${a.horizon}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         AiSources(a.sources)
+        if (generatedAt != null) {
+            Text(
+                "Généré ${timeAgo(generatedAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text("Actualiser l'analyse")
         }
@@ -381,6 +399,10 @@ private fun StatItem(label: String, value: String, valueColor: Color = Color.Uns
 
 /** Axis timestamp formatting: intraday shows the time, longer ranges show the date. */
 private fun fmtAxisTime(tsMillis: Long, range: HistoryRange): String {
-    val pattern = if (range == HistoryRange.HOURS) "HH:mm" else "dd/MM"
+    val pattern = when (range) {
+        HistoryRange.HOURS -> "HH:mm"
+        HistoryRange.YEAR, HistoryRange.YEAR_5 -> "MM/yyyy"
+        else -> "dd/MM"
+    }
     return SimpleDateFormat(pattern, Locale.FRANCE).format(Date(tsMillis))
 }
