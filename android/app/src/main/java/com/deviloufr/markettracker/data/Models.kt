@@ -171,6 +171,53 @@ data class ForecastAdvice(
     }
 }
 
+// --- Portfolio (local buy/sell tracking) ----------------------------------------------------
+
+/** Side of a recorded trade. */
+enum class TradeSide { BUY, SELL }
+
+/** French label for a [TradeSide], for display in the UI. */
+fun sideLabelFr(side: TradeSide): String = when (side) {
+    TradeSide.BUY -> "Achat"
+    TradeSide.SELL -> "Vente"
+}
+
+/**
+ * A single buy/sell transaction the user recorded (or imported from a BoursoBank
+ * export). [price] and [fees] are in the asset's own trading currency; [symbol]
+ * follows Yahoo conventions so it matches quotes and the watchlist.
+ */
+data class Trade(
+    val id: String,
+    val symbol: String,
+    val side: TradeSide,
+    val quantity: Double,
+    val price: Double,       // per-unit executed price
+    val ts: Long,            // epoch millis of the trade
+    val fees: Double = 0.0,
+    val note: String = ""
+)
+
+/**
+ * Net holding for one symbol, derived from its [Trade]s with the average-cost
+ * method. [quantity] is 0 for a fully-closed position (kept only for its
+ * [realizedPnl]). P&L helpers take the current [Quote] price as an argument so
+ * the value is always live.
+ */
+data class Position(
+    val symbol: String,
+    val quantity: Double,
+    val avgCost: Double,     // weighted cost of the units still held
+    val realizedPnl: Double, // booked P&L from past sells
+    val invested: Double     // cost basis of the open position (quantity * avgCost)
+) {
+    val isOpen: Boolean get() = quantity > 1e-9
+    fun marketValue(price: Double): Double = quantity * price
+    fun unrealizedPnl(price: Double): Double = (price - avgCost) * quantity
+    fun unrealizedPct(price: Double): Double? =
+        avgCost.takeIf { it > 0.0 }?.let { (price - it) / it * 100.0 }
+}
+
 /** A per-symbol deep analysis kept on device with the time it was generated. */
 data class CachedAnalysis(val analysis: TrendAnalysis, val ts: Long)
 

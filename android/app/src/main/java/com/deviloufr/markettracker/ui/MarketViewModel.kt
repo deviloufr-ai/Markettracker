@@ -2,13 +2,16 @@ package com.deviloufr.markettracker.ui
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.deviloufr.markettracker.data.AiTrendApi
 import com.deviloufr.markettracker.data.Asset
+import com.deviloufr.markettracker.data.BoursoCsvParser
 import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.MarketBrief
+import com.deviloufr.markettracker.data.PortfolioMath
 import com.deviloufr.markettracker.data.PriceApi
 import com.deviloufr.markettracker.data.PricePoint
 import com.deviloufr.markettracker.data.Quote
@@ -16,13 +19,17 @@ import com.deviloufr.markettracker.data.Repository
 import com.deviloufr.markettracker.data.Settings
 import com.deviloufr.markettracker.data.TechnicalAnalysis
 import com.deviloufr.markettracker.data.TechnicalSignals
+import com.deviloufr.markettracker.data.Trade
 import com.deviloufr.markettracker.data.TrendAnalysis
 import com.deviloufr.markettracker.notify.WhatsAppSender
 import com.deviloufr.markettracker.service.MonitorService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 class MarketViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -33,6 +40,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val quotes = repo.quotes
     val watchlist = repo.watchlist
     val alerts = repo.alerts
+    val trades = repo.trades
     val settings = repo.settings
     val monitoring = repo.monitoring
     val aiAnalyses = repo.aiAnalyses
@@ -45,6 +53,76 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addTicker(symbol: String) = viewModelScope.launch { repo.addTicker(symbol) }
     fun removeTicker(symbol: String) = viewModelScope.launch { repo.removeTicker(symbol) }
+
+    // --- Portfolio ---------------------------------------------------------------------------
+
+    /** Record a buy/sell, then pull a fresh quote so its live P&L shows immediately. */
+    fun addTrade(trade: Trade) = viewModelScope.launch {
+        repo.addTrade(trade)
+        api.getQuote(trade.symbol)?.let { repo.recordQuote(it) }
+    }
+
+    fun removeTrade(id: String) = viewModelScope.launch { repo.removeTrade(id) }
+
+    /** Symbols with an open (non-zero) position, derived from the recorded trades. */
+    fun heldSymbols(): List<String> =
+        PortfolioMath.positionsFrom(trades.value).filter { it.isOpen }.map { it.symbol }
+
+    /** Fetch quotes for the held symbols so the portfolio shows live values. */
+    fun refreshPortfolioQuotes(symbols: List<String> = heldSymbols()) = viewModelScope.launch {
+        symbols.distinct().forEach { s -> launch { api.getQuote(s)?.let { repo.recordQuote(it) } } }
+    }
+
+    /** Commit reviewed import rows and warm their quotes. */
+    fun importTrades(newTrades: List<Trade>) = viewModelScope.launch {
+        repo.addTrades(newTrades)
+        refreshPortfolioQuotes(newTrades.map { it.symbol })
+    }
+
+    /**
+     * Read and parse a BoursoBank CSV export at [uri], resolving each ISIN to a
+     * Yahoo symbol via the existing search endpoint. Returns a preview the UI can
+     * show for confirmation before anything is written to the portfolio.
+     */
+    suspend fun previewBoursoCsv(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        val text = runCatching { readTextFile(uri) }.getOrElse {
+            return@withContext ImportResult(emptyList(), 0, "Lecture du fichier impossible.")
+        }
+        val parsed = BoursoCsvParser.parse(text)
+        if (parsed.trades.isEmpty()) {
+            return@withContext ImportResult(emptyList(), parsed.skipped, parsed.error ?: "Aucune transaction lisible.")
+        }
+        val resolved = HashMap<String, String?>()
+        val rows = parsed.trades.map { d ->
+            val symbol = if (d.isIsin) {
+                resolved.getOrPut(d.rawSymbol) { api.searchSymbols(d.rawSymbol).firstOrNull()?.symbol }
+            } else d.rawSymbol
+            ImportRow(
+                trade = Trade(
+                    id = UUID.randomUUID().toString(),
+                    symbol = (symbol ?: d.rawSymbol).uppercase(),
+                    side = d.side,
+                    quantity = d.quantity,
+                    price = d.price,
+                    ts = d.ts,
+                    fees = d.fees,
+                    note = "BoursoBank"
+                ),
+                label = d.label,
+                rawSymbol = d.rawSymbol,
+                resolved = !d.isIsin || symbol != null
+            )
+        }
+        ImportResult(rows, parsed.skipped, null)
+    }
+
+    private fun readTextFile(uri: Uri): String {
+        val bytes = getApplication<Application>().contentResolver
+            .openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+        // BoursoBank exports are frequently Windows-1252; fall back if UTF-8 mangles accents.
+        val utf8 = String(bytes, Charsets.UTF_8)
+        return if (utf8.contains('�')) String(bytes, charset("windows-1252")) else utf8
+    }
     fun updateSettings(transform: (Settings) -> Settings) =
         viewModelScope.launch { repo.updateSettings(transform) }
     fun clearAlerts() = viewModelScope.launch { repo.clearAlerts() }
@@ -140,3 +218,18 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
         onResult(WhatsAppSender.send(settings.value, "✅ Message test MarketTracker"))
     }
 }
+
+/** One reviewable line of a BoursoBank CSV import: the trade plus its display context. */
+data class ImportRow(
+    val trade: Trade,
+    val label: String,
+    val rawSymbol: String,
+    val resolved: Boolean   // false = ISIN we couldn't map to a Yahoo symbol (no live quote)
+)
+
+/** Result of previewing a CSV import: reviewable [rows], count [skipped], optional [error]. */
+data class ImportResult(
+    val rows: List<ImportRow>,
+    val skipped: Int,
+    val error: String?
+)

@@ -48,6 +48,11 @@ class Repository private constructor(private val appContext: Context) {
         .map { prefs -> prefs[Keys.ALERTS]?.let(::parseAlerts) ?: emptyList() }
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    /** Recorded buy/sell transactions backing the local portfolio. */
+    val trades: StateFlow<List<Trade>> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList() }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
     val monitoring: StateFlow<Boolean> = appContext.dataStore.data
         .map { it[Keys.MONITORING] ?: false }
         .stateIn(scope, SharingStarted.Eagerly, false)
@@ -101,6 +106,30 @@ class Repository private constructor(private val appContext: Context) {
 
     suspend fun clearAlerts() {
         appContext.dataStore.edit { it[Keys.ALERTS] = "[]" }
+    }
+
+    /** Append one trade to the portfolio (newest kept first). */
+    suspend fun addTrade(trade: Trade) {
+        appContext.dataStore.edit { prefs ->
+            val current = prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList()
+            prefs[Keys.TRADES] = tradesToStr(listOf(trade) + current)
+        }
+    }
+
+    /** Append several trades at once (used by the BoursoBank CSV import). */
+    suspend fun addTrades(newTrades: List<Trade>) {
+        if (newTrades.isEmpty()) return
+        appContext.dataStore.edit { prefs ->
+            val current = prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList()
+            prefs[Keys.TRADES] = tradesToStr(newTrades + current)
+        }
+    }
+
+    suspend fun removeTrade(id: String) {
+        appContext.dataStore.edit { prefs ->
+            val current = prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList()
+            prefs[Keys.TRADES] = tradesToStr(current.filterNot { it.id == id })
+        }
     }
 
     /** Persist a freshly generated per-symbol analysis, pruning entries older than 2 days. */
@@ -169,6 +198,7 @@ private object Keys {
     val AI_FORECAST = stringPreferencesKey("ai_forecast")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
+    val TRADES = stringPreferencesKey("trades")
     val MONITORING = booleanPreferencesKey("monitoring")
 }
 
@@ -232,6 +262,45 @@ private fun alertsToStr(list: List<AlertEvent>): String {
                 put("detail", e.detail)
                 put("price", e.price)
                 put("ts", e.ts)
+            }
+        )
+    }
+    return arr.toString()
+}
+
+private fun parseTrades(s: String): List<Trade> = try {
+    val arr = JSONArray(s)
+    (0 until arr.length()).mapNotNull { i ->
+        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val symbol = o.optString("symbol").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        Trade(
+            id = o.optString("id").takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString(),
+            symbol = symbol,
+            side = if (o.optString("side") == "SELL") TradeSide.SELL else TradeSide.BUY,
+            quantity = o.optDouble("quantity", 0.0),
+            price = o.optDouble("price", 0.0),
+            ts = o.optLong("ts"),
+            fees = o.optDouble("fees", 0.0),
+            note = o.optString("note")
+        )
+    }
+} catch (e: Exception) {
+    emptyList()
+}
+
+private fun tradesToStr(list: List<Trade>): String {
+    val arr = JSONArray()
+    list.forEach { t ->
+        arr.put(
+            JSONObject().apply {
+                put("id", t.id)
+                put("symbol", t.symbol)
+                put("side", t.side.name)
+                put("quantity", t.quantity)
+                put("price", t.price)
+                put("ts", t.ts)
+                put("fees", t.fees)
+                put("note", t.note)
             }
         )
     }

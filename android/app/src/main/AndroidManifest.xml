@@ -9,6 +9,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Package visibility (Android 11+): let the portfolio deep-link into the
+         BoursoBank app, and fall back to opening the bourse site in a browser. -->
+    <queries>
+        <package android:name="com.boursorama.android.clients" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MarketApp"
         android:allowBackup="true"

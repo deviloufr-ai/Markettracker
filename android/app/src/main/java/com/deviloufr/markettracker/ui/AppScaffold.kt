@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
@@ -28,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     WATCHLIST("Suivi", Icons.Filled.ShowChart),
+    PORTFOLIO("Portefeuille", Icons.Filled.AccountBalanceWallet),
     ALERTS("Alertes", Icons.Filled.Notifications),
     SETTINGS("Réglages", Icons.Filled.Settings)
 }
@@ -89,6 +91,7 @@ fun AppScaffold(vm: MarketViewModel = viewModel()) {
                     onTickerClick = { detailSymbol = it },
                     onAddAssets = { showPicker = true }
                 )
+                Tab.PORTFOLIO -> PortfolioScreen(vm, onPositionClick = { detailSymbol = it })
                 Tab.ALERTS -> AlertsScreen(vm)
                 Tab.SETTINGS -> SettingsScreen(vm)
             }
