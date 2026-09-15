@@ -40,8 +40,16 @@ jobs:
         working-directory: android
         run: gradle wrapper --gradle-version 8.7
 
+      - name: Decode signing key
+        if: ${{ secrets.SIGNING_KEYSTORE_B64 != '' }}
+        env:
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: printf '%s' "$KS_B64" | base64 -d > android/app/markettracker.keystore
+
       - name: Build debug APK
         working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK

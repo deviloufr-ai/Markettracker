@@ -23,14 +23,34 @@ android {
         vectorDrawables { useSupportLibrary true }
     }
 
+    // Stable signing key so every CI build is signed with the SAME key. Without
+    // this, each build uses a throwaway key and Android refuses to update in place
+    // ("app not installed" unless you first uninstall). The key file is NOT in the
+    // repo; CI writes it from a base64 secret before building, and it's present
+    // locally for developer builds. When absent, builds fall back to the default
+    // debug signing so a checkout without the key still compiles.
+    def sharedKeystore = file('markettracker.keystore')
+    signingConfigs {
+        shared {
+            if (sharedKeystore.exists()) {
+                storeFile sharedKeystore
+                storePassword 'markettracker'
+                keyAlias 'markettracker'
+                keyPassword 'markettracker'
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
+            if (sharedKeystore.exists()) signingConfig signingConfigs.shared
         }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (sharedKeystore.exists()) signingConfig signingConfigs.shared
         }
     }
 
