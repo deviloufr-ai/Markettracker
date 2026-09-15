@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +25,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.deviloufr.markettracker.ui.theme.CryptoTint
+import com.deviloufr.markettracker.ui.theme.EquityTint
+import com.deviloufr.markettracker.ui.theme.ForexTint
+import com.deviloufr.markettracker.ui.theme.FuturesTint
+import com.deviloufr.markettracker.ui.theme.IndexTint
 
 /**
  * Classe d'actif d'un symbole, avec son icône, son libellé français et sa
@@ -31,11 +37,11 @@ import coil.request.ImageRequest
  * Yahoo Finance (voir [marketOf]).
  */
 enum class Market(val label: String, val icon: ImageVector, val tint: Color) {
-    CRYPTO("Crypto", Icons.Filled.CurrencyBitcoin, Color(0xFFF7931A)),
-    FOREX("Devises", Icons.Filled.CurrencyExchange, Color(0xFF16A34A)),
-    FUTURES("Contrats à terme", Icons.Filled.Schedule, Color(0xFFB45309)),
-    INDICE("Indice", Icons.Filled.Analytics, Color(0xFF7C3AED)),
-    ACTION("Action", Icons.Filled.BusinessCenter, Color(0xFF0284C7));
+    CRYPTO("Crypto", Icons.Filled.CurrencyBitcoin, CryptoTint),
+    FOREX("Devises", Icons.Filled.CurrencyExchange, ForexTint),
+    FUTURES("Contrats à terme", Icons.Filled.Schedule, FuturesTint),
+    INDICE("Indice", Icons.Filled.Analytics, IndexTint),
+    ACTION("Action", Icons.Filled.BusinessCenter, EquityTint);
 }
 
 /**
@@ -76,15 +82,17 @@ fun logoUrl(symbol: String): String? {
 }
 
 /**
- * Circular asset badge: shows the symbol's real logo when one loads, and falls
- * back to the tinted Market category icon while loading, on error, or when no
- * logo source exists for that market.
+ * Asset badge: shows the symbol's real logo when one loads, and falls back to
+ * the tinted Market category icon while loading, on error, or when no logo
+ * source exists for that market. [shape] defaults to a circle; pass a rounded
+ * square for the tile look used across the redesigned screens.
  */
 @Composable
 fun AssetLogo(
     symbol: String,
     modifier: Modifier = Modifier,
-    size: Dp = 40.dp
+    size: Dp = 40.dp,
+    shape: Shape = CircleShape
 ) {
     val market = marketOf(symbol)
     val url = remember(symbol) { logoUrl(symbol) }
@@ -101,7 +109,7 @@ fun AssetLogo(
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(shape)
             .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
@@ -115,7 +123,7 @@ fun AssetLogo(
                     .build(),
                 contentDescription = "Logo $symbol",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.size(size * 0.72f).clip(CircleShape),
+                modifier = Modifier.size(size * 0.72f).clip(shape),
                 loading = { fallback() },
                 error = { fallback() }
             )

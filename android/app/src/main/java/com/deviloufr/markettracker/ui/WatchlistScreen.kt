@@ -6,20 +6,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -34,21 +37,21 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.runtime.rememberCoroutineScope
 import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.MarketBrief
+import com.deviloufr.markettracker.data.PricePoint
 import com.deviloufr.markettracker.data.Quote
-import com.deviloufr.markettracker.ui.theme.Gain
-import com.deviloufr.markettracker.ui.theme.Loss
 import kotlinx.coroutines.launch
 
 @Composable
@@ -61,149 +64,12 @@ fun WatchlistScreen(
     val watchlist by vm.watchlist.collectAsState()
     val quotes by vm.quotes.collectAsState()
     val monitoring by vm.monitoring.collectAsState()
-
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            MonitorCard(
-                monitoring = monitoring,
-                tickerCount = watchlist.size,
-                onStart = { vm.startMonitoring(context) },
-                onStop = { vm.stopMonitoring(context) },
-                onRefresh = { vm.refreshOnce() }
-            )
-        }
-        if (watchlist.isNotEmpty()) {
-            item { MarketBriefCard(vm = vm, watchlist = watchlist, quotes = quotes) }
-        }
-        item { OpportunitiesCard(vm = vm, watchlist = watchlist) }
-        item {
-            FilledTonalButton(
-                onClick = onAddAssets,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Text("  Ajouter des actifs")
-            }
-        }
-        items(watchlist, key = { it }) { symbol ->
-            TickerCard(
-                symbol = symbol,
-                quote = quotes[symbol],
-                onClick = { onTickerClick(symbol) },
-                onRemove = { vm.removeTicker(symbol) }
-            )
-        }
-        if (watchlist.isEmpty()) {
-            item { EmptyState("Aucun symbole", "Ajoutez un symbole comme AAPL ou TSLA pour commencer le suivi.") }
-        }
-    }
-}
-
-@Composable
-private fun MonitorCard(
-    monitoring: Boolean,
-    tickerCount: Int,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onRefresh: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (monitoring) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                if (monitoring) "● Surveillance active" else "○ Surveillance arrêtée",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                if (monitoring) "Surveillance de $tickerCount actifs en arrière-plan. Vous recevrez une notification à chaque alerte."
-                else "Démarrez la surveillance pour suivre les prix et recevoir des alertes natives + WhatsApp.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (monitoring) {
-                    Button(onClick = onStop) {
-                        Icon(Icons.Filled.Stop, contentDescription = null)
-                        Text("  Arrêter")
-                    }
-                } else {
-                    Button(onClick = onStart) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Text("  Démarrer")
-                    }
-                }
-                OutlinedButton(onClick = onRefresh) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null)
-                    Text("  Actualiser")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TickerCard(symbol: String, quote: Quote?, onClick: () -> Unit, onRemove: () -> Unit) {
-    val market = marketOf(symbol)
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AssetLogo(symbol = symbol, size = 40.dp)
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                val sub = when {
-                    quote == null -> "${market.label} · Aucune donnée"
-                    else -> buildString {
-                        append(market.label)
-                        append(" · ")
-                        append(timeAgo(quote.ts))
-                        quote.volume?.let { append(" · vol ${fmtVolume(it)}") }
-                    }
-                }
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    if (quote != null) fmtPrice(quote.price) else "—",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                val change = quote?.dayChangePct
-                if (change != null) {
-                    Text(
-                        fmtPct(change),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (change >= 0) Gain else Loss,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Delete, contentDescription = "Supprimer $symbol", tint = MaterialTheme.colorScheme.outline)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MarketBriefCard(
-    vm: MarketViewModel,
-    watchlist: List<String>,
-    quotes: Map<String, Quote>
-) {
     val settings by vm.settings.collectAsState()
+    val sparklines by vm.sparklines.collectAsState()
     val scope = rememberCoroutineScope()
-    var brief by remember { mutableStateOf<AiUiState<MarketBrief>>(AiUiState.Idle) }
 
-    // Restore the last generated brief so it survives navigation/restart.
+    // AI brief state is hoisted here so the hero's trigger and the results section share it.
+    var brief by remember { mutableStateOf<AiUiState<MarketBrief>>(AiUiState.Idle) }
     val cachedBrief = vm.aiBrief.collectAsState().value
     LaunchedEffect(cachedBrief) {
         if (brief is AiUiState.Idle && cachedBrief != null) brief = AiUiState.Success(cachedBrief.brief)
@@ -219,67 +85,331 @@ private fun MarketBriefCard(
         }
     }
 
-    // Free on-device snapshot from the current quotes we already hold.
+    // Free on-device snapshot from the quotes we already hold.
     val rated = watchlist.mapNotNull { s -> quotes[s]?.dayChangePct?.let { s to it } }
     val up = rated.count { it.second >= 0.0 }
     val down = rated.size - up
     val best = rated.maxByOrNull { it.second }
     val worst = rated.minByOrNull { it.second }
 
-    Card {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Brief du marché IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            HeroCard(
+                monitoring = monitoring,
+                assetCount = watchlist.size,
+                up = up,
+                down = down,
+                best = best,
+                worst = worst,
+                aiEnabled = settings.anthropicApiKey.isNotBlank(),
+                briefLoading = brief is AiUiState.Loading,
+                hasBrief = brief is AiUiState.Success,
+                onGenerate = { runBrief() },
+                onStart = { vm.startMonitoring(context) },
+                onStop = { vm.stopMonitoring(context) },
+                onRefresh = { vm.refreshOnce() }
+            )
+        }
+        if (watchlist.isNotEmpty()) {
+            item {
+                MarketBriefSection(
+                    briefState = brief,
+                    keyMissing = settings.anthropicApiKey.isBlank(),
+                    tracked = watchlist.toSet(),
+                    generatedAt = cachedBrief?.ts,
+                    onAdd = { vm.addTicker(it) },
+                    onRetry = { runBrief() }
+                )
+            }
+        }
+        item { OpportunitiesCard(vm = vm, watchlist = watchlist) }
+        item {
+            FilledTonalButton(
+                onClick = onAddAssets,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Text("  Ajouter des actifs")
+            }
+        }
+        items(watchlist, key = { it }) { symbol ->
+            LaunchedEffect(symbol) { vm.loadSparkline(symbol) }
+            TickerCard(
+                symbol = symbol,
+                quote = quotes[symbol],
+                sparkline = sparklines[symbol],
+                onClick = { onTickerClick(symbol) },
+                onRemove = { vm.removeTicker(symbol) }
+            )
+        }
+        if (watchlist.isEmpty()) {
+            item { EmptyState("Aucun symbole", "Ajoutez un symbole comme AAPL ou TSLA pour commencer le suivi.") }
+        }
+    }
+}
 
-            if (rated.isEmpty()) {
+/**
+ * Gradient hero fusing the monitoring status, the portfolio snapshot, and the
+ * AI-brief trigger. Monitoring start/stop stays reachable via the play/stop
+ * button in the action row.
+ */
+@Composable
+private fun HeroCard(
+    monitoring: Boolean,
+    assetCount: Int,
+    up: Int,
+    down: Int,
+    best: Pair<String, Double>?,
+    worst: Pair<String, Double>?,
+    aiEnabled: Boolean,
+    briefLoading: Boolean,
+    hasBrief: Boolean,
+    onGenerate: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    GradientHeroCard {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Suivi du marché",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.85f)
+            )
+            StatusChip(monitoring)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "$assetCount actifs",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White
+            )
+            if (up + down > 0) {
                 Text(
-                    "Actualisez les cours pour voir l'instantané de votre liste.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "$up en hausse",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color(0xFFBBF7D0),
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
-            } else {
-                Text(
-                    "$up en hausse · $down en baisse",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    best?.let {
-                        Text("↑ ${it.first} ${fmtPct(it.second)}", style = MaterialTheme.typography.bodySmall, color = Gain)
-                    }
-                    worst?.takeIf { it.first != best?.first }?.let {
-                        Text("↓ ${it.first} ${fmtPct(it.second)}", style = MaterialTheme.typography.bodySmall, color = Loss)
-                    }
+            }
+        }
+        if (best != null || worst != null) {
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                best?.let {
+                    Text("↑ ${it.first} ${fmtPct(it.second)}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFDCFCE7))
+                }
+                worst?.takeIf { it.first != best?.first }?.let {
+                    Text("↓ ${it.first} ${fmtPct(it.second)}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFECACA))
                 }
             }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HeroIconButton(
+                icon = if (monitoring) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                contentDescription = if (monitoring) "Arrêter la surveillance" else "Démarrer la surveillance",
+                onClick = { if (monitoring) onStop() else onStart() }
+            )
+            HeroIconButton(
+                icon = Icons.Filled.Refresh,
+                contentDescription = "Actualiser les cours",
+                onClick = onRefresh
+            )
+            if (aiEnabled) {
+                HeroBriefButton(
+                    loading = briefLoading,
+                    hasBrief = hasBrief,
+                    modifier = Modifier.weight(1f),
+                    onClick = onGenerate
+                )
+            }
+        }
+    }
+}
 
-            if (settings.anthropicApiKey.isBlank()) {
+@Composable
+private fun StatusChip(active: Boolean) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.18f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(if (active) Color(0xFF4ADE80) else Color(0xFFE2E8F0))
+        )
+        Text(
+            if (active) "Surveillance active" else "Surveillance arrêtée",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White
+        )
+    }
+}
+
+@Composable
+private fun HeroIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.16f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = Color.White)
+    }
+}
+
+@Composable
+private fun HeroBriefButton(loading: Boolean, hasBrief: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.16f))
+            .clickable(enabled = !loading, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                Text("Analyse…", style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1)
+            } else {
+                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text(
+                    if (hasBrief) "Actualiser le brief" else "Générer le brief IA",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TickerCard(
+    symbol: String,
+    quote: Quote?,
+    sparkline: List<PricePoint>?,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val market = marketOf(symbol)
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AssetLogo(symbol = symbol, size = 40.dp, shape = RoundedCornerShape(12.dp))
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val sub = when {
+                    quote == null -> "${market.label} · Aucune donnée"
+                    else -> buildString {
+                        append(market.label)
+                        append(" · ")
+                        append(timeAgo(quote.ts))
+                        quote.volume?.let { append(" · vol ${fmtVolume(it)}") }
+                    }
+                }
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            val change = quote?.dayChangePct
+            if (sparkline != null && sparkline.size >= 2) {
+                Sparkline(
+                    points = sparkline,
+                    positive = (change ?: 0.0) >= 0.0,
+                    modifier = Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 26.dp)
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    if (quote != null) fmtPrice(quote.price) else "—",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (change != null) {
+                    PctBadge(change, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Filled.Delete, contentDescription = "Supprimer $symbol", tint = MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}
+
+/** AI brief results, rendered below the hero (the trigger button lives in the hero). */
+@Composable
+private fun MarketBriefSection(
+    briefState: AiUiState<MarketBrief>,
+    keyMissing: Boolean,
+    tracked: Set<String>,
+    generatedAt: Long?,
+    onAdd: (String) -> Unit,
+    onRetry: () -> Unit
+) {
+    if (keyMissing) {
+        Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Brief du marché IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     "Ajoutez votre clé API Anthropic dans Réglages pour un brief rédigé par l'IA, "
                         + "avec le contexte de marché du jour issu du web.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
-                when (val s = brief) {
-                    AiUiState.Idle -> OutlinedButton(onClick = { runBrief() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("🔮  Générer le brief IA")
-                    }
-                    AiUiState.Loading -> Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text("Analyse du marché sur le web…", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    is AiUiState.Error -> AiErrorRow(s.message) { runBrief() }
-                    is AiUiState.Success -> MarketBriefContent(
-                        b = s.data,
-                        tracked = watchlist.toSet(),
-                        generatedAt = cachedBrief?.ts,
-                        onAdd = { vm.addTicker(it) },
-                        onRefresh = { runBrief() }
-                    )
-                }
+            }
+        }
+        return
+    }
+    when (briefState) {
+        AiUiState.Idle -> Unit // Nothing generated yet — the hero button prompts.
+        AiUiState.Loading -> Card {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Analyse du marché sur le web…", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        is AiUiState.Error -> Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                AiErrorRow(briefState.message, onRetry)
+            }
+        }
+        is AiUiState.Success -> Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Brief du marché IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                MarketBriefContent(
+                    b = briefState.data,
+                    tracked = tracked,
+                    generatedAt = generatedAt,
+                    onAdd = onAdd,
+                    onRefresh = onRetry
+                )
                 AiDisclaimer()
             }
         }

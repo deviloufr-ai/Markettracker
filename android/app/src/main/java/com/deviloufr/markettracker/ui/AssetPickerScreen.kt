@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -331,7 +332,7 @@ private fun AssetRow(asset: Asset, selected: Boolean, onToggle: () -> Unit) {
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AssetLogo(symbol = asset.symbol, size = 40.dp)
+        AssetLogo(symbol = asset.symbol, size = 40.dp, shape = RoundedCornerShape(12.dp))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(asset.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             Text(

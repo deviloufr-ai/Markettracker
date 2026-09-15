@@ -1,5 +1,5 @@
 <resources>
     <style name="Theme.MarketTracker" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">#FFF8FAFC</item>
     </style>
 </resources>

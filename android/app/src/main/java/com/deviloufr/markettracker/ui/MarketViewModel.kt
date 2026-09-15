@@ -19,6 +19,9 @@ import com.deviloufr.markettracker.data.TechnicalSignals
 import com.deviloufr.markettracker.data.TrendAnalysis
 import com.deviloufr.markettracker.notify.WhatsAppSender
 import com.deviloufr.markettracker.service.MonitorService
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MarketViewModel(app: Application) : AndroidViewModel(app) {
@@ -36,6 +39,10 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val aiBrief = repo.aiBrief
     val aiForecast = repo.aiForecast
 
+    /** Per-symbol intraday series driving the watchlist row sparklines. */
+    private val _sparklines = MutableStateFlow<Map<String, List<PricePoint>>>(emptyMap())
+    val sparklines = _sparklines.asStateFlow()
+
     fun addTicker(symbol: String) = viewModelScope.launch { repo.addTicker(symbol) }
     fun removeTicker(symbol: String) = viewModelScope.launch { repo.removeTicker(symbol) }
     fun updateSettings(transform: (Settings) -> Settings) =
@@ -45,10 +52,36 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     fun startMonitoring(context: Context) = MonitorService.start(context)
     fun stopMonitoring(context: Context) = MonitorService.stop(context)
 
-    /** One-off refresh for the UI (does not fire alerts). */
+    /** One-off refresh for the UI (does not fire alerts). Also warms the sparkline cache. */
     fun refreshOnce() = viewModelScope.launch {
         watchlist.value.forEach { symbol ->
             launch { api.getQuote(symbol)?.let { repo.recordQuote(it) } }
+            loadSparkline(symbol)
+        }
+    }
+
+    /**
+     * Lazily load the intraday series for one symbol's row sparkline, cached by
+     * symbol so it never re-fetches on recomposition. Falls back to a two-point
+     * previousClose → price series when Yahoo returns no history, so a row always
+     * shows a direction cue.
+     */
+    fun loadSparkline(symbol: String) {
+        if (_sparklines.value.containsKey(symbol)) return
+        viewModelScope.launch {
+            val history = api.getHistory(symbol, HistoryRange.DAYS)
+            val series = if (history.size >= 2) {
+                history.takeLast(40)
+            } else {
+                val q = quotes.value[symbol]
+                val prev = q?.previousClose
+                if (q != null && prev != null) {
+                    listOf(PricePoint(q.ts - 1L, prev), PricePoint(q.ts, q.price))
+                } else {
+                    emptyList()
+                }
+            }
+            if (series.isNotEmpty()) _sparklines.update { it + (symbol to series) }
         }
     }
 

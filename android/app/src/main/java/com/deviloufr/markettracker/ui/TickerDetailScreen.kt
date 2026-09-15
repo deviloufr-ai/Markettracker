@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -85,7 +86,7 @@ fun TickerDetailScreen(vm: MarketViewModel, symbol: String, onBack: () -> Unit) 
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AssetLogo(symbol = symbol, size = 32.dp)
+                        AssetLogo(symbol = symbol, size = 32.dp, shape = RoundedCornerShape(10.dp))
                         Column(Modifier.padding(start = 10.dp)) {
                             Text(symbol, fontWeight = FontWeight.Bold)
                             Text(
@@ -260,26 +261,30 @@ private fun AiAnalysisContent(a: TrendAnalysis, generatedAt: Long?, onRefresh: (
 
 @Composable
 private fun PriceHeader(price: Double?, dayChangePct: Double?, asOf: Long?) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             if (price != null) fmtPrice(price) else "—",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold
         )
-        val sub = buildString {
-            if (dayChangePct != null) append("${fmtPct(dayChangePct)} aujourd'hui")
+        val meta = buildString {
+            if (dayChangePct != null) append("aujourd'hui")
             if (asOf != null) {
                 if (isNotEmpty()) append(" · ")
                 append(timeAgo(asOf))
             }
         }
-        if (sub.isNotEmpty()) {
-            Text(
-                sub,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if ((dayChangePct ?: 0.0) >= 0) Gain else Loss,
-                fontWeight = FontWeight.Medium
-            )
+        if (dayChangePct != null || meta.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (dayChangePct != null) PctBadge(dayChangePct)
+                if (meta.isNotEmpty()) {
+                    Text(
+                        meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.Card
@@ -75,7 +76,7 @@ private fun AlertRow(alert: AlertEvent) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AssetLogo(symbol = alert.symbol, size = 24.dp)
+                    AssetLogo(symbol = alert.symbol, size = 24.dp, shape = RoundedCornerShape(8.dp))
                     Text(alert.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 Text(
