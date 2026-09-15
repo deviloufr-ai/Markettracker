@@ -31,6 +31,8 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val alerts = repo.alerts
     val settings = repo.settings
     val monitoring = repo.monitoring
+    val aiAnalyses = repo.aiAnalyses
+    val aiBrief = repo.aiBrief
 
     fun addTicker(symbol: String) = viewModelScope.launch { repo.addTicker(symbol) }
     fun removeTicker(symbol: String) = viewModelScope.launch { repo.removeTicker(symbol) }
@@ -70,12 +72,14 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     ): Result<TrendAnalysis> {
         val s = settings.value
         return aiApi.analyze(symbol, quote, signals, s.anthropicApiKey, s.aiModel)
+            .onSuccess { repo.saveAnalysis(symbol, it) }
     }
 
     /** Optional Claude watchlist-wide market brief (with web search). */
     suspend fun marketBrief(): Result<MarketBrief> {
         val s = settings.value
         return aiApi.brief(watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel)
+            .onSuccess { repo.saveBrief(it) }
     }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {

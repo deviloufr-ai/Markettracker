@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -199,6 +200,12 @@ private fun MarketBriefCard(
     val scope = rememberCoroutineScope()
     var brief by remember { mutableStateOf<AiUiState<MarketBrief>>(AiUiState.Idle) }
 
+    // Restore the last generated brief so it survives navigation/restart.
+    val cachedBrief = vm.aiBrief.collectAsState().value
+    LaunchedEffect(cachedBrief) {
+        if (brief is AiUiState.Idle && cachedBrief != null) brief = AiUiState.Success(cachedBrief.brief)
+    }
+
     fun runBrief() {
         brief = AiUiState.Loading
         scope.launch {
@@ -262,7 +269,11 @@ private fun MarketBriefCard(
                         Text("Analyse du marché sur le web…", style = MaterialTheme.typography.bodyMedium)
                     }
                     is AiUiState.Error -> AiErrorRow(s.message) { runBrief() }
-                    is AiUiState.Success -> MarketBriefContent(s.data, onRefresh = { runBrief() })
+                    is AiUiState.Success -> MarketBriefContent(
+                        b = s.data,
+                        generatedAt = cachedBrief?.ts,
+                        onRefresh = { runBrief() }
+                    )
                 }
                 AiDisclaimer()
             }
@@ -271,12 +282,19 @@ private fun MarketBriefCard(
 }
 
 @Composable
-private fun MarketBriefContent(b: MarketBrief, onRefresh: () -> Unit) {
+private fun MarketBriefContent(b: MarketBrief, generatedAt: Long?, onRefresh: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DirectionPill(b.sentiment, b.sentiment.replaceFirstChar { it.uppercase() })
         if (b.summary.isNotBlank()) Text(b.summary, style = MaterialTheme.typography.bodyMedium)
         if (b.highlights.isNotEmpty()) BulletList(b.highlights)
         AiSources(b.sources)
+        if (generatedAt != null) {
+            Text(
+                "Généré ${timeAgo(generatedAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text("Actualiser le brief")
         }

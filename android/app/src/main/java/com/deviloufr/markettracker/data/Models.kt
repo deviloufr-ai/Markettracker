@@ -130,3 +130,9 @@ data class MarketBrief(
     val highlights: List<String>,
     val sources: List<AiSource>
 )
+
+/** A per-symbol deep analysis kept on device with the time it was generated. */
+data class CachedAnalysis(val analysis: TrendAnalysis, val ts: Long)
+
+/** The watchlist-wide brief kept on device with the time it was generated. */
+data class CachedBrief(val brief: MarketBrief, val ts: Long)

@@ -52,6 +52,16 @@ class Repository private constructor(private val appContext: Context) {
         .map { it[Keys.MONITORING] ?: false }
         .stateIn(scope, SharingStarted.Eagerly, false)
 
+    /** Cached per-symbol deep AI analyses, persisted so they survive navigation/restart. */
+    val aiAnalyses: StateFlow<Map<String, CachedAnalysis>> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.AI_ANALYSES]?.let(::parseAnalyses) ?: emptyMap() }
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    /** Cached watchlist-wide AI brief, persisted so it survives navigation/restart. */
+    val aiBrief: StateFlow<CachedBrief?> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.AI_BRIEF]?.let(::parseBrief) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     fun recordQuote(quote: Quote) {
         _quotes.value = _quotes.value.toMutableMap().apply { put(quote.symbol, quote) }
     }
@@ -88,6 +98,28 @@ class Repository private constructor(private val appContext: Context) {
         appContext.dataStore.edit { it[Keys.ALERTS] = "[]" }
     }
 
+    /** Persist a freshly generated per-symbol analysis, pruning entries older than 2 days. */
+    suspend fun saveAnalysis(symbol: String, analysis: TrendAnalysis) {
+        appContext.dataStore.edit { prefs ->
+            val obj = prefs[Keys.AI_ANALYSES]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+            val now = System.currentTimeMillis()
+            val cutoff = now - 2L * 24 * 3600 * 1000
+            // Drop stale entries so the blob stays small.
+            obj.keys().asSequence().toList().forEach { k ->
+                if ((obj.optJSONObject(k)?.optLong("ts") ?: 0L) < cutoff) obj.remove(k)
+            }
+            obj.put(symbol, analysisToJson(analysis, now))
+            prefs[Keys.AI_ANALYSES] = obj.toString()
+        }
+    }
+
+    /** Persist a freshly generated watchlist-wide brief. */
+    suspend fun saveBrief(brief: MarketBrief) {
+        appContext.dataStore.edit { prefs ->
+            prefs[Keys.AI_BRIEF] = briefToJson(brief, System.currentTimeMillis()).toString()
+        }
+    }
+
     suspend fun setMonitoring(on: Boolean) {
         appContext.dataStore.edit { it[Keys.MONITORING] = on }
     }
@@ -120,6 +152,8 @@ private object Keys {
     val WA_KEY = stringPreferencesKey("wa_key")
     val AI_KEY = stringPreferencesKey("ai_key")
     val AI_MODEL = stringPreferencesKey("ai_model")
+    val AI_ANALYSES = stringPreferencesKey("ai_analyses")
+    val AI_BRIEF = stringPreferencesKey("ai_brief")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
     val MONITORING = booleanPreferencesKey("monitoring")
@@ -189,4 +223,79 @@ private fun alertsToStr(list: List<AlertEvent>): String {
         )
     }
     return arr.toString()
+}
+
+// --- AI analysis / brief caching (de)serialization ------------------------------------------
+
+private fun strArray(list: List<String>): JSONArray = JSONArray().apply { list.forEach { put(it) } }
+
+private fun parseStrList(arr: JSONArray?): List<String> {
+    arr ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf(String::isNotBlank) }
+}
+
+private fun sourcesToJson(list: List<AiSource>): JSONArray = JSONArray().apply {
+    list.forEach { put(JSONObject().put("title", it.title).put("url", it.url)) }
+}
+
+private fun parseSources(arr: JSONArray?): List<AiSource> {
+    arr ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)?.let { AiSource(it.optString("title"), it.optString("url")) }
+    }
+}
+
+private fun analysisToJson(a: TrendAnalysis, ts: Long): JSONObject = JSONObject().apply {
+    put("ts", ts)
+    put("direction", a.direction)
+    put("confidence", a.confidence)
+    put("summary", a.summary)
+    put("drivers", strArray(a.drivers))
+    put("horizon", a.horizon)
+    put("sources", sourcesToJson(a.sources))
+}
+
+private fun parseAnalyses(s: String): Map<String, CachedAnalysis> = try {
+    val obj = JSONObject(s)
+    val out = LinkedHashMap<String, CachedAnalysis>()
+    obj.keys().forEach { key ->
+        val o = obj.optJSONObject(key) ?: return@forEach
+        out[key] = CachedAnalysis(
+            analysis = TrendAnalysis(
+                direction = o.optString("direction", "neutre"),
+                confidence = o.optInt("confidence"),
+                summary = o.optString("summary"),
+                drivers = parseStrList(o.optJSONArray("drivers")),
+                horizon = o.optString("horizon"),
+                sources = parseSources(o.optJSONArray("sources"))
+            ),
+            ts = o.optLong("ts")
+        )
+    }
+    out
+} catch (e: Exception) {
+    emptyMap()
+}
+
+private fun briefToJson(b: MarketBrief, ts: Long): JSONObject = JSONObject().apply {
+    put("ts", ts)
+    put("sentiment", b.sentiment)
+    put("summary", b.summary)
+    put("highlights", strArray(b.highlights))
+    put("sources", sourcesToJson(b.sources))
+}
+
+private fun parseBrief(s: String): CachedBrief? = try {
+    val o = JSONObject(s)
+    CachedBrief(
+        brief = MarketBrief(
+            sentiment = o.optString("sentiment", "mitigé"),
+            summary = o.optString("summary"),
+            highlights = parseStrList(o.optJSONArray("highlights")),
+            sources = parseSources(o.optJSONArray("sources"))
+        ),
+        ts = o.optLong("ts")
+    )
+} catch (e: Exception) {
+    null
 }
