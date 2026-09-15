@@ -45,7 +45,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deviloufr.markettracker.data.ForecastAdvice
@@ -314,7 +316,6 @@ private fun TickerCard(
     onClick: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val market = marketOf(symbol)
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -322,17 +323,36 @@ private fun TickerCard(
         ) {
             AssetLogo(symbol = symbol, size = 40.dp, shape = RoundedCornerShape(12.dp))
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                val sub = when {
-                    quote == null -> "${market.label} · Aucune donnée"
-                    else -> buildString {
-                        append(market.label)
-                        append(" · ")
-                        append(timeAgo(quote.ts))
-                        quote.volume?.let { append(" · vol ${fmtVolume(it)}") }
-                    }
+                Text(
+                    displayName(symbol, quote),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    modifier = Modifier.padding(top = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        symbol,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                    )
+                    Text(
+                        exchangeLabel(symbol, quote),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val change = quote?.dayChangePct
             if (sparkline != null && sparkline.size >= 2) {

@@ -61,6 +61,60 @@ fun marketOf(symbol: String): Market {
 }
 
 /**
+ * Human-readable company/instrument name for a symbol: the curated catalog first
+ * (instant, offline), then the live quote's name, then the symbol itself.
+ */
+fun displayName(symbol: String, quote: com.deviloufr.markettracker.data.Quote?): String =
+    com.deviloufr.markettracker.data.AssetCatalog.nameOf(symbol)
+        ?: quote?.name?.takeIf { it.isNotBlank() }
+        ?: symbol.trim()
+
+/**
+ * Friendly exchange label for the card sub-line: the live quote's exchange
+ * (normalised), else guessed from the Yahoo suffix, else the market category.
+ */
+fun exchangeLabel(symbol: String, quote: com.deviloufr.markettracker.data.Quote?): String {
+    quote?.exchange?.takeIf { it.isNotBlank() }?.let { return prettyExchange(it) }
+    return suffixExchange(symbol) ?: marketOf(symbol).label
+}
+
+/** Normalise Yahoo's exchange names/codes to something readable. */
+private fun prettyExchange(raw: String): String = when (raw.uppercase()) {
+    "NMS", "NGM", "NCM", "NASDAQGS", "NASDAQGM", "NASDAQCM", "NASDAQ" -> "Nasdaq"
+    "NYQ", "NYE", "NYSE" -> "NYSE"
+    "PCX", "ASE", "AMEX" -> "NYSE American"
+    "PAR", "PARIS" -> "Euronext Paris"
+    "AMS", "AMSTERDAM" -> "Euronext Amsterdam"
+    "BRU", "BRUSSELS" -> "Euronext Bruxelles"
+    "GER", "XETRA" -> "Xetra"
+    "FRA", "FRANKFURT" -> "Francfort"
+    "LSE", "LONDON" -> "London SE"
+    "MIL", "MILAN" -> "Borsa Italiana"
+    "MCE", "MADRID" -> "BME Madrid"
+    "EBS", "SWX", "VTX" -> "SIX Swiss"
+    "CCC", "CCY" -> "Marché mondial"
+    else -> raw
+}
+
+/** Best-effort exchange from the Yahoo symbol suffix (used before a quote loads). */
+private fun suffixExchange(symbol: String): String? {
+    val s = symbol.trim().uppercase()
+    return when {
+        s.endsWith(".PA") -> "Euronext Paris"
+        s.endsWith(".AS") -> "Euronext Amsterdam"
+        s.endsWith(".BR") -> "Euronext Bruxelles"
+        s.endsWith(".DE") -> "Xetra"
+        s.endsWith(".F") -> "Francfort"
+        s.endsWith(".L") -> "London SE"
+        s.endsWith(".MI") -> "Borsa Italiana"
+        s.endsWith(".MC") -> "BME Madrid"
+        s.endsWith(".SW") -> "SIX Swiss"
+        s.endsWith(".TO") -> "Toronto"
+        else -> null
+    }
+}
+
+/**
  * Best-effort URL for a symbol's real logo (e.g. NVDA → the NVIDIA logo):
  * Financial Modeling Prep for equities/ETFs (keyed by ticker) and CoinCap for
  * crypto (keyed by the base coin). Returns null for forex/futures/indices,

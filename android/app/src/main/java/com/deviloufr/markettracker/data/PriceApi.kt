@@ -156,7 +156,12 @@ class PriceApi(
                 }
             }
 
-            Quote(symbol, price, volume, if (prevClose.isNaN()) null else prevClose, ts)
+            val name = listOf("longName", "shortName")
+                .firstNotNullOfOrNull { k -> meta.optString(k).takeIf { it.isNotBlank() } }
+            val exchange = listOf("fullExchangeName", "exchangeName")
+                .firstNotNullOfOrNull { k -> meta.optString(k).takeIf { it.isNotBlank() } }
+
+            Quote(symbol, price, volume, if (prevClose.isNaN()) null else prevClose, ts, name, exchange)
         } catch (e: Exception) {
             null
         }

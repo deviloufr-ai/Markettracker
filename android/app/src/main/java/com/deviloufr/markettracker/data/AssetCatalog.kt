@@ -91,6 +91,11 @@ object AssetCatalog {
         Asset("ASML.AS", "ASML", "Europe"),
     )
 
+    private val bySymbol: Map<String, String> by lazy { all.associate { it.symbol.uppercase() to it.name } }
+
+    /** Curated display name for a symbol, or null when it isn't in the catalog. */
+    fun nameOf(symbol: String): String? = bySymbol[symbol.trim().uppercase()]
+
     /**
      * Case-insensitive match on the symbol or name. Returns the whole catalog
      * for a blank query.

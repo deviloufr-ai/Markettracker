@@ -6,7 +6,9 @@ data class Quote(
     val price: Double,
     val volume: Double?,
     val previousClose: Double?,
-    val ts: Long // epoch millis
+    val ts: Long, // epoch millis
+    val name: String? = null,     // company/instrument name from Yahoo, when available
+    val exchange: String? = null  // exchange name from Yahoo (e.g. "NasdaqGS", "Paris")
 ) {
     /** Percentage change vs the previous close (the "day change"), if known. */
     val dayChangePct: Double?
