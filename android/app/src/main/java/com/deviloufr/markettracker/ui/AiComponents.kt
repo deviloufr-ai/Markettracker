@@ -93,6 +93,17 @@ fun VerdictPill(verdict: TrendVerdict, label: String) =
 fun DirectionPill(word: String, label: String) =
     DirectionPill(label, directionColor(word), directionIcon(word))
 
+/** Small uppercase-ish section header used to break AI output into readable blocks. */
+@Composable
+fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
 /** Bulleted list of short strings ("• …" per line). */
 @Composable
 fun BulletList(items: List<String>) {

@@ -121,6 +121,17 @@ data class TrendAnalysis(
 )
 
 /**
+ * A notable market mover surfaced by the AI brief. May or may not be in the
+ * user's watchlist ([symbol] is checked against the watchlist at render time).
+ */
+data class Mover(
+    val symbol: String,
+    val name: String,
+    val changePct: Double?, // day change %, when the model reports it
+    val note: String        // short plain-language reason
+)
+
+/**
  * Structured result of the optional watchlist-wide Claude "market brief".
  * [sentiment] is one of "haussier" | "baissier" | "mitigé".
  */
@@ -128,6 +139,7 @@ data class MarketBrief(
     val sentiment: String,
     val summary: String,
     val highlights: List<String>,
+    val movers: List<Mover>,
     val sources: List<AiSource>
 )
 

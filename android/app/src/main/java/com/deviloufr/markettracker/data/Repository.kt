@@ -277,11 +277,39 @@ private fun parseAnalyses(s: String): Map<String, CachedAnalysis> = try {
     emptyMap()
 }
 
+private fun moversToJson(list: List<Mover>): JSONArray = JSONArray().apply {
+    list.forEach { m ->
+        put(JSONObject().apply {
+            put("symbol", m.symbol)
+            put("name", m.name)
+            put("changePct", m.changePct ?: JSONObject.NULL)
+            put("note", m.note)
+        })
+    }
+}
+
+private fun parseMovers(arr: JSONArray?): List<Mover> {
+    arr ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)?.let { o ->
+            val symbol = o.optString("symbol")
+            if (symbol.isBlank()) null
+            else Mover(
+                symbol = symbol,
+                name = o.optString("name"),
+                changePct = if (o.has("changePct") && !o.isNull("changePct")) o.optDouble("changePct") else null,
+                note = o.optString("note")
+            )
+        }
+    }
+}
+
 private fun briefToJson(b: MarketBrief, ts: Long): JSONObject = JSONObject().apply {
     put("ts", ts)
     put("sentiment", b.sentiment)
     put("summary", b.summary)
     put("highlights", strArray(b.highlights))
+    put("movers", moversToJson(b.movers))
     put("sources", sourcesToJson(b.sources))
 }
 
@@ -292,6 +320,7 @@ private fun parseBrief(s: String): CachedBrief? = try {
             sentiment = o.optString("sentiment", "mitigé"),
             summary = o.optString("summary"),
             highlights = parseStrList(o.optJSONArray("highlights")),
+            movers = parseMovers(o.optJSONArray("movers")),
             sources = parseSources(o.optJSONArray("sources"))
         ),
         ts = o.optLong("ts")

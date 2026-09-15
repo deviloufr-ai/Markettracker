@@ -40,16 +40,21 @@ class AiTrendApi(
         model: String
     ): Result<TrendAnalysis> = withContext(Dispatchers.IO) {
         val system = """
-            Tu es un analyste de marché prudent et factuel. On te fournit des indicateurs techniques
-            calculés sur l'appareil pour un actif financier. Utilise l'outil de recherche web pour
-            trouver les actualités récentes, le sentiment des analystes et les tendances du secteur
-            concernant cet actif, puis synthétise une lecture équilibrée de la tendance.
-            Signale les risques dans les deux sens. Tu ne donnes pas de conseil d'investissement
-            personnalisé et tu ne recommandes jamais d'acheter ou de vendre.
+            Tu es un analyste de marché prudent et factuel qui explique simplement. On te fournit des
+            indicateurs techniques calculés sur l'appareil pour un actif financier. Utilise l'outil de
+            recherche web pour trouver les actualités récentes, le sentiment des analystes et les
+            tendances du secteur concernant cet actif, puis synthétise une lecture équilibrée de la
+            tendance. Signale les risques dans les deux sens. Tu ne donnes pas de conseil
+            d'investissement personnalisé et tu ne recommandes jamais d'acheter ou de vendre.
+
+            STYLE : écris pour une personne non spécialiste. Phrases courtes. Français simple.
+            Évite le jargon ; si un terme technique est indispensable, explique-le en quelques mots.
+            Chaque "driver" fait une ligne courte et concrète (≤ 15 mots).
+
             Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown),
             avec exactement ces clés :
-            {"direction":"hausse|baisse|neutre","confidence":0-100,"summary":"2 à 4 phrases en français",
-             "drivers":["facteur clé","..."],"horizon":"court terme|moyen terme|long terme + précision"}
+            {"direction":"hausse|baisse|neutre","confidence":0-100,"summary":"2 à 4 phrases claires en français",
+             "drivers":["facteur clé court","..."],"horizon":"court terme|moyen terme|long terme + précision"}
         """.trimIndent()
 
         val user = buildString {
@@ -102,15 +107,26 @@ class AiTrendApi(
             return@withContext Result.failure(Exception("Aucun actif à analyser. Ajoutez des symboles à votre liste."))
         }
         val system = """
-            Tu es un analyste de marché prudent et factuel. On te fournit la liste de suivi d'un
-            utilisateur avec les cours actuels. Utilise l'outil de recherche web pour connaître le
-            contexte de marché du jour (actualités macro, mouvements notables des actifs de la liste),
-            puis rédige un brief court et équilibré. Tu ne donnes aucun conseil d'investissement
-            personnalisé.
+            Tu es un analyste de marché prudent et factuel qui explique simplement. On te fournit la
+            liste de suivi d'un utilisateur avec les cours actuels. Utilise l'outil de recherche web
+            pour connaître le contexte de marché du jour et, surtout, pour repérer les MOUVEMENTS
+            MAJEURS de la journée (fortes hausses et fortes baisses). Inclus à la fois les actifs de
+            la liste de suivi ET des actifs notables qui n'y sont PAS, tant que leur mouvement est
+            important. Puis rédige un brief court et équilibré. Tu ne donnes aucun conseil
+            d'investissement personnalisé.
+
+            STYLE : écris pour une personne non spécialiste. Phrases courtes. Français simple.
+            Évite le jargon ; explique brièvement tout terme technique. Chaque "highlight" et chaque
+            "note" fait une ligne courte (≤ 15 mots).
+
             Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown),
             avec exactement ces clés :
-            {"sentiment":"haussier|baissier|mitigé","summary":"3 à 5 phrases en français",
-             "highlights":["SYMBOLE : point marquant","..."]}
+            {"sentiment":"haussier|baissier|mitigé",
+             "summary":"3 à 5 phrases claires en français",
+             "highlights":["point marquant court","..."],
+             "movers":[{"symbol":"TICKER","name":"Nom","changePct":8.2,"note":"raison courte"}]}
+            Dans "movers", changePct est la variation du jour en % (nombre, positif ou négatif ;
+            null si inconnu). Classe du plus fort mouvement au plus faible. Vise 4 à 8 mouvements.
         """.trimIndent()
 
         val user = buildString {
@@ -124,7 +140,9 @@ class AiTrendApi(
                 }
                 append("\n")
             }
-            append("\nRecherche le contexte de marché actuel et rends l'objet JSON demandé.")
+            append("\nRecherche le contexte de marché actuel. Dans \"movers\", inclus les gros ")
+            append("mouvements du jour de cette liste ET des actifs importants hors liste. ")
+            append("Rends l'objet JSON demandé.")
         }
 
         request(system, user, apiKey, model, maxTokens = 2500).mapCatching { raw ->
@@ -133,12 +151,14 @@ class AiTrendApi(
                     sentiment = "mitigé",
                     summary = raw.text.ifBlank { "Brief indisponible." },
                     highlights = emptyList(),
+                    movers = emptyList(),
                     sources = raw.sources
                 )
             MarketBrief(
                 sentiment = json.optString("sentiment", "mitigé").ifBlank { "mitigé" },
                 summary = json.optString("summary").ifBlank { "Brief indisponible." },
                 highlights = stringList(json.optJSONArray("highlights")),
+                movers = parseMovers(json.optJSONArray("movers")),
                 sources = raw.sources
             )
         }
@@ -265,6 +285,25 @@ class AiTrendApi(
         for (i in 0 until arr.length()) {
             val s = arr.optString(i).trim()
             if (s.isNotEmpty()) out.add(s)
+        }
+        return out
+    }
+
+    private fun parseMovers(arr: JSONArray?): List<Mover> {
+        arr ?: return emptyList()
+        val out = ArrayList<Mover>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val symbol = o.optString("symbol").trim().uppercase()
+            if (symbol.isEmpty()) continue
+            out.add(
+                Mover(
+                    symbol = symbol,
+                    name = o.optString("name").trim(),
+                    changePct = if (o.has("changePct") && !o.isNull("changePct")) o.optDouble("changePct") else null,
+                    note = o.optString("note").trim()
+                )
+            )
         }
         return out
     }

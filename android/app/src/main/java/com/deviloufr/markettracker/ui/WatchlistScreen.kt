@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
 import com.deviloufr.markettracker.data.MarketBrief
 import com.deviloufr.markettracker.data.Quote
@@ -271,7 +272,9 @@ private fun MarketBriefCard(
                     is AiUiState.Error -> AiErrorRow(s.message) { runBrief() }
                     is AiUiState.Success -> MarketBriefContent(
                         b = s.data,
+                        tracked = watchlist.toSet(),
                         generatedAt = cachedBrief?.ts,
+                        onAdd = { vm.addTicker(it) },
                         onRefresh = { runBrief() }
                     )
                 }
@@ -282,11 +285,28 @@ private fun MarketBriefCard(
 }
 
 @Composable
-private fun MarketBriefContent(b: MarketBrief, generatedAt: Long?, onRefresh: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun MarketBriefContent(
+    b: MarketBrief,
+    tracked: Set<String>,
+    generatedAt: Long?,
+    onAdd: (String) -> Unit,
+    onRefresh: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DirectionPill(b.sentiment, b.sentiment.replaceFirstChar { it.uppercase() })
-        if (b.summary.isNotBlank()) Text(b.summary, style = MaterialTheme.typography.bodyMedium)
-        if (b.highlights.isNotEmpty()) BulletList(b.highlights)
+        if (b.summary.isNotBlank()) {
+            Text(b.summary, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp)
+        }
+        if (b.highlights.isNotEmpty()) {
+            SectionLabel("À retenir")
+            BulletList(b.highlights)
+        }
+        if (b.movers.isNotEmpty()) {
+            SectionLabel("Mouvements majeurs")
+            b.movers.forEach { mover ->
+                MoverRow(mover, tracked = mover.symbol in tracked, onAdd = { onAdd(mover.symbol) })
+            }
+        }
         AiSources(b.sources)
         if (generatedAt != null) {
             Text(
@@ -297,6 +317,41 @@ private fun MarketBriefContent(b: MarketBrief, generatedAt: Long?, onRefresh: ()
         }
         TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text("Actualiser le brief")
+        }
+    }
+}
+
+@Composable
+private fun MoverRow(m: com.deviloufr.markettracker.data.Mover, tracked: Boolean, onAdd: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(m.symbol, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                m.changePct?.let {
+                    Text(
+                        fmtPct(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (it >= 0) Gain else Loss,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            val sub = listOfNotNull(m.name.ifBlank { null }, m.note.ifBlank { null }).joinToString(" — ")
+            if (sub.isNotBlank()) {
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (tracked) {
+            Text("Suivi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        } else {
+            TextButton(onClick = onAdd, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Text("Ajouter", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

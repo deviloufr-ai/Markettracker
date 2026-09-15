@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.PricePoint
 import com.deviloufr.markettracker.data.Quote
@@ -226,18 +227,22 @@ private fun AiSection(vm: MarketViewModel, symbol: String, quote: Quote?, points
 
 @Composable
 private fun AiAnalysisContent(a: TrendAnalysis, generatedAt: Long?, onRefresh: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DirectionPill(a.direction, a.direction.replaceFirstChar { it.uppercase() })
             Text("Confiance ${a.confidence}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (a.summary.isNotBlank()) Text(a.summary, style = MaterialTheme.typography.bodyMedium)
+        if (a.summary.isNotBlank()) {
+            SectionLabel("Résumé")
+            Text(a.summary, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp)
+        }
         if (a.drivers.isNotEmpty()) {
-            Text("Facteurs clés", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            SectionLabel("Facteurs clés")
             BulletList(a.drivers)
         }
         if (a.horizon.isNotBlank()) {
-            Text("Horizon : ${a.horizon}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionLabel("Perspective")
+            Text(a.horizon, style = MaterialTheme.typography.bodyMedium)
         }
         AiSources(a.sources)
         if (generatedAt != null) {
