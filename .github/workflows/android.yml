@@ -41,10 +41,15 @@ jobs:
         run: gradle wrapper --gradle-version 8.7
 
       - name: Decode signing key
-        if: ${{ secrets.SIGNING_KEYSTORE_B64 != '' }}
         env:
           KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
-        run: printf '%s' "$KS_B64" | base64 -d > android/app/markettracker.keystore
+        run: |
+          if [ -n "$KS_B64" ]; then
+            printf '%s' "$KS_B64" | base64 -d > android/app/markettracker.keystore
+            echo "Signing key decoded."
+          else
+            echo "No signing key secret set; using default debug signing."
+          fi
 
       - name: Build debug APK
         working-directory: android
