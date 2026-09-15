@@ -62,6 +62,11 @@ class Repository private constructor(private val appContext: Context) {
         .map { prefs -> prefs[Keys.AI_BRIEF]?.let(::parseBrief) }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    /** Cached forward-looking opportunities forecast, persisted across navigation/restart. */
+    val aiForecast: StateFlow<CachedForecast?> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.AI_FORECAST]?.let(::parseForecast) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     fun recordQuote(quote: Quote) {
         _quotes.value = _quotes.value.toMutableMap().apply { put(quote.symbol, quote) }
     }
@@ -120,6 +125,13 @@ class Repository private constructor(private val appContext: Context) {
         }
     }
 
+    /** Persist a freshly generated opportunities forecast. */
+    suspend fun saveForecast(forecast: ForecastAdvice) {
+        appContext.dataStore.edit { prefs ->
+            prefs[Keys.AI_FORECAST] = forecastToJson(forecast, System.currentTimeMillis()).toString()
+        }
+    }
+
     suspend fun setMonitoring(on: Boolean) {
         appContext.dataStore.edit { it[Keys.MONITORING] = on }
     }
@@ -154,6 +166,7 @@ private object Keys {
     val AI_MODEL = stringPreferencesKey("ai_model")
     val AI_ANALYSES = stringPreferencesKey("ai_analyses")
     val AI_BRIEF = stringPreferencesKey("ai_brief")
+    val AI_FORECAST = stringPreferencesKey("ai_forecast")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
     val MONITORING = booleanPreferencesKey("monitoring")
@@ -323,6 +336,63 @@ private fun parseBrief(s: String): CachedBrief? = try {
             movers = parseMovers(o.optJSONArray("movers")),
             sources = parseSources(o.optJSONArray("sources"))
         ),
+        ts = o.optLong("ts")
+    )
+} catch (e: Exception) {
+    null
+}
+
+private fun opportunitiesToJson(list: List<Opportunity>): JSONArray = JSONArray().apply {
+    list.forEach { op ->
+        put(JSONObject().apply {
+            put("symbol", op.symbol)
+            put("name", op.name)
+            put("potentialPct", op.potentialPct ?: JSONObject.NULL)
+            put("rationale", op.rationale)
+        })
+    }
+}
+
+private fun parseOpportunities(arr: JSONArray?): List<Opportunity> {
+    arr ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)?.let { o ->
+            val symbol = o.optString("symbol")
+            if (symbol.isBlank()) null
+            else Opportunity(
+                symbol = symbol,
+                name = o.optString("name"),
+                potentialPct = if (o.has("potentialPct") && !o.isNull("potentialPct")) o.optDouble("potentialPct") else null,
+                rationale = o.optString("rationale")
+            )
+        }
+    }
+}
+
+private fun forecastToJson(f: ForecastAdvice, ts: Long): JSONObject = JSONObject().apply {
+    put("ts", ts)
+    put("horizons", JSONArray().apply {
+        f.horizons.forEach { h ->
+            put(JSONObject()
+                .put("label", h.label)
+                .put("opportunities", opportunitiesToJson(h.opportunities)))
+        }
+    })
+    put("sources", sourcesToJson(f.sources))
+}
+
+private fun parseForecast(s: String): CachedForecast? = try {
+    val o = JSONObject(s)
+    val arr = o.optJSONArray("horizons")
+    val horizons = if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)?.let { h ->
+            val label = h.optString("label")
+            if (label.isBlank()) null
+            else HorizonForecast(label, parseOpportunities(h.optJSONArray("opportunities")))
+        }
+    }
+    CachedForecast(
+        forecast = ForecastAdvice(horizons = horizons, sources = parseSources(o.optJSONArray("sources"))),
         ts = o.optLong("ts")
     )
 } catch (e: Exception) {

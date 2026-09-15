@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.deviloufr.markettracker.data.AiTrendApi
 import com.deviloufr.markettracker.data.Asset
+import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.MarketBrief
 import com.deviloufr.markettracker.data.PriceApi
@@ -33,6 +34,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val monitoring = repo.monitoring
     val aiAnalyses = repo.aiAnalyses
     val aiBrief = repo.aiBrief
+    val aiForecast = repo.aiForecast
 
     fun addTicker(symbol: String) = viewModelScope.launch { repo.addTicker(symbol) }
     fun removeTicker(symbol: String) = viewModelScope.launch { repo.removeTicker(symbol) }
@@ -64,22 +66,41 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     /** True once the user has entered an Anthropic key, i.e. the deep AI analysis is available. */
     fun aiEnabled(): Boolean = settings.value.anthropicApiKey.isNotBlank()
 
-    /** Optional Claude deep analysis (with web search) for one symbol. */
+    /**
+     * Optional Claude deep analysis (with web search) for one symbol. The previously cached
+     * analysis (if any) is fed back so the model can build on it and note what changed.
+     */
     suspend fun analyzeWithAi(
         symbol: String,
         quote: Quote?,
         signals: TechnicalSignals
     ): Result<TrendAnalysis> {
         val s = settings.value
-        return aiApi.analyze(symbol, quote, signals, s.anthropicApiKey, s.aiModel)
-            .onSuccess { repo.saveAnalysis(symbol, it) }
+        val prev = aiAnalyses.value[symbol]
+        return aiApi.analyze(
+            symbol, quote, signals, s.anthropicApiKey, s.aiModel,
+            previous = prev?.analysis, previousTs = prev?.ts
+        ).onSuccess { repo.saveAnalysis(symbol, it) }
     }
 
-    /** Optional Claude watchlist-wide market brief (with web search). */
+    /** Optional Claude watchlist-wide market brief (with web search), fed the previous brief. */
     suspend fun marketBrief(): Result<MarketBrief> {
         val s = settings.value
-        return aiApi.brief(watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel)
-            .onSuccess { repo.saveBrief(it) }
+        val prev = aiBrief.value
+        return aiApi.brief(
+            watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel,
+            previous = prev?.brief, previousTs = prev?.ts
+        ).onSuccess { repo.saveBrief(it) }
+    }
+
+    /** Optional Claude forward-looking opportunities forecast, fed the previous forecast. */
+    suspend fun forecastAdvice(): Result<ForecastAdvice> {
+        val s = settings.value
+        val prev = aiForecast.value
+        return aiApi.forecast(
+            watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel,
+            previous = prev?.forecast, previousTs = prev?.ts
+        ).onSuccess { repo.saveForecast(it) }
     }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {

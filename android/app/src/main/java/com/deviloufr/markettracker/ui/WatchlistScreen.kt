@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
+import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.MarketBrief
 import com.deviloufr.markettracker.data.Quote
 import com.deviloufr.markettracker.ui.theme.Gain
@@ -77,6 +78,7 @@ fun WatchlistScreen(
         if (watchlist.isNotEmpty()) {
             item { MarketBriefCard(vm = vm, watchlist = watchlist, quotes = quotes) }
         }
+        item { OpportunitiesCard(vm = vm, watchlist = watchlist) }
         item {
             FilledTonalButton(
                 onClick = onAddAssets,
@@ -304,7 +306,14 @@ private fun MarketBriefContent(
         if (b.movers.isNotEmpty()) {
             SectionLabel("Mouvements majeurs")
             b.movers.forEach { mover ->
-                MoverRow(mover, tracked = mover.symbol in tracked, onAdd = { onAdd(mover.symbol) })
+                AiAssetRow(
+                    symbol = mover.symbol,
+                    name = mover.name,
+                    pct = mover.changePct,
+                    note = mover.note,
+                    tracked = mover.symbol in tracked,
+                    onAdd = { onAdd(mover.symbol) }
+                )
             }
         }
         AiSources(b.sources)
@@ -322,36 +331,109 @@ private fun MarketBriefContent(
 }
 
 @Composable
-private fun MoverRow(m: com.deviloufr.markettracker.data.Mover, tracked: Boolean, onAdd: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(m.symbol, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                m.changePct?.let {
-                    Text(
-                        fmtPct(it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (it >= 0) Gain else Loss,
-                        fontWeight = FontWeight.Medium
+private fun OpportunitiesCard(vm: MarketViewModel, watchlist: List<String>) {
+    val settings by vm.settings.collectAsState()
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<AiUiState<ForecastAdvice>>(AiUiState.Idle) }
+
+    // Restore the last generated forecast so it survives navigation/restart.
+    val cached = vm.aiForecast.collectAsState().value
+    LaunchedEffect(cached) {
+        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.forecast)
+    }
+
+    fun run() {
+        state = AiUiState.Loading
+        scope.launch {
+            state = vm.forecastAdvice().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Opportunités indisponibles.") }
+            )
+        }
+    }
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Opportunités IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Fort potentiel de hausse estimé par horizon (1 semaine → 1 an), d'après les analyses "
+                    + "et actualités du marché. Scénarios spéculatifs, pas un conseil en investissement.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (settings.anthropicApiKey.isBlank()) {
+                Text(
+                    "Ajoutez votre clé API Anthropic dans Réglages pour générer les opportunités.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                when (val s = state) {
+                    AiUiState.Idle -> OutlinedButton(onClick = { run() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("🔮  Générer les opportunités")
+                    }
+                    AiUiState.Loading -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Analyse des perspectives sur le web…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    is AiUiState.Error -> AiErrorRow(s.message) { run() }
+                    is AiUiState.Success -> ForecastContent(
+                        f = s.data,
+                        tracked = watchlist.toSet(),
+                        generatedAt = cached?.ts,
+                        onAdd = { vm.addTicker(it) },
+                        onRefresh = { run() }
+                    )
+                }
+                AiDisclaimer()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForecastContent(
+    f: ForecastAdvice,
+    tracked: Set<String>,
+    generatedAt: Long?,
+    onAdd: (String) -> Unit,
+    onRefresh: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (f.horizons.isEmpty()) {
+            Text("Aucune opportunité proposée.", style = MaterialTheme.typography.bodyMedium)
+        }
+        f.horizons.forEach { h ->
+            SectionLabel(h.label)
+            if (h.opportunities.isEmpty()) {
+                Text("—", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                h.opportunities.forEach { op ->
+                    AiAssetRow(
+                        symbol = op.symbol,
+                        name = op.name,
+                        pct = op.potentialPct,
+                        note = op.rationale,
+                        tracked = op.symbol in tracked,
+                        onAdd = { onAdd(op.symbol) }
                     )
                 }
             }
-            val sub = listOfNotNull(m.name.ifBlank { null }, m.note.ifBlank { null }).joinToString(" — ")
-            if (sub.isNotBlank()) {
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
-        if (tracked) {
-            Text("Suivi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-        } else {
-            TextButton(onClick = onAdd, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Text("Ajouter", style = MaterialTheme.typography.labelSmall)
-            }
+        AiSources(f.sources)
+        if (generatedAt != null) {
+            Text(
+                "Généré ${timeAgo(generatedAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text("Actualiser les opportunités")
         }
     }
 }

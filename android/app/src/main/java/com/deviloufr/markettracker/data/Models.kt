@@ -143,8 +143,39 @@ data class MarketBrief(
     val sources: List<AiSource>
 )
 
+/**
+ * A speculative opportunity proposed by the AI forecast for a given horizon.
+ * [potentialPct] is an estimated potential upside %, when the model gives one.
+ */
+data class Opportunity(
+    val symbol: String,
+    val name: String,
+    val potentialPct: Double?,
+    val rationale: String
+)
+
+/** Opportunities proposed for one time horizon (e.g. "1 semaine"). */
+data class HorizonForecast(val label: String, val opportunities: List<Opportunity>)
+
+/**
+ * Forward-looking "Opportunités" advice: the assets with the highest potential
+ * increase per horizon, from market analytics + news. Speculative, not advice.
+ */
+data class ForecastAdvice(
+    val horizons: List<HorizonForecast>,
+    val sources: List<AiSource>
+) {
+    companion object {
+        /** The horizons requested, in display order. */
+        val HORIZONS = listOf("1 semaine", "1 mois", "6 mois", "1 an")
+    }
+}
+
 /** A per-symbol deep analysis kept on device with the time it was generated. */
 data class CachedAnalysis(val analysis: TrendAnalysis, val ts: Long)
 
 /** The watchlist-wide brief kept on device with the time it was generated. */
 data class CachedBrief(val brief: MarketBrief, val ts: Long)
+
+/** The forward-looking opportunities forecast kept on device with its generation time. */
+data class CachedForecast(val forecast: ForecastAdvice, val ts: Long)

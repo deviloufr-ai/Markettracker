@@ -37,7 +37,9 @@ class AiTrendApi(
         quote: Quote?,
         signals: TechnicalSignals,
         apiKey: String,
-        model: String
+        model: String,
+        previous: TrendAnalysis? = null,
+        previousTs: Long? = null
     ): Result<TrendAnalysis> = withContext(Dispatchers.IO) {
         val system = """
             Tu es un analyste de marché prudent et factuel qui explique simplement. On te fournit des
@@ -72,6 +74,12 @@ class AiTrendApi(
             append("- ${signals.trendLabel}.\n")
             append("- Volatilité : ${fmt1(signals.volatilityPct)} %.\n")
             append("- Position dans la fourchette de la période : ${fmt1(signals.rangePositionPct)} % (0 = plus bas, 100 = plus haut).\n")
+            if (previous != null) {
+                append("\nAnalyse précédente (${agoFr(previousTs)}) : direction=${previous.direction}, ")
+                append("confiance=${previous.confidence}%. Résumé : ${previous.summary}\n")
+                append("Actualise cette lecture avec les informations récentes et indique brièvement ")
+                append("ce qui a changé depuis (dans le résumé ou un driver).\n")
+            }
             append("\nRecherche les actualités récentes de $symbol et rends l'objet JSON demandé.")
         }
 
@@ -101,7 +109,9 @@ class AiTrendApi(
         symbols: List<String>,
         quotes: Map<String, Quote>,
         apiKey: String,
-        model: String
+        model: String,
+        previous: MarketBrief? = null,
+        previousTs: Long? = null
     ): Result<MarketBrief> = withContext(Dispatchers.IO) {
         if (symbols.isEmpty()) {
             return@withContext Result.failure(Exception("Aucun actif à analyser. Ajoutez des symboles à votre liste."))
@@ -140,6 +150,11 @@ class AiTrendApi(
                 }
                 append("\n")
             }
+            if (previous != null) {
+                append("\nBrief précédent (${agoFr(previousTs)}) : sentiment=${previous.sentiment}. ")
+                append("${previous.summary}\n")
+                append("Tiens-en compte et souligne ce qui a évolué depuis.\n")
+            }
             append("\nRecherche le contexte de marché actuel. Dans \"movers\", inclus les gros ")
             append("mouvements du jour de cette liste ET des actifs importants hors liste. ")
             append("Rends l'objet JSON demandé.")
@@ -159,6 +174,79 @@ class AiTrendApi(
                 summary = json.optString("summary").ifBlank { "Brief indisponible." },
                 highlights = stringList(json.optJSONArray("highlights")),
                 movers = parseMovers(json.optJSONArray("movers")),
+                sources = raw.sources
+            )
+        }
+    }
+
+    /**
+     * Forward-looking opportunities: for each horizon (1 semaine → 1 an), the assets with the
+     * highest potential increase per market analytics + news. Speculative, informational only.
+     */
+    suspend fun forecast(
+        symbols: List<String>,
+        quotes: Map<String, Quote>,
+        apiKey: String,
+        model: String,
+        previous: ForecastAdvice? = null,
+        previousTs: Long? = null
+    ): Result<ForecastAdvice> = withContext(Dispatchers.IO) {
+        val horizons = ForecastAdvice.HORIZONS.joinToString(", ")
+        val system = """
+            Tu es un analyste de marché prudent qui explique simplement. À partir d'analyses de
+            marché et des actualités récentes (utilise l'outil de recherche web), propose pour CHAQUE
+            horizon les actifs présentant le plus fort potentiel de HAUSSE. Considère à la fois la
+            liste de suivi de l'utilisateur ET l'ensemble du marché (actifs hors liste). Ce sont des
+            scénarios spéculatifs, PAS un conseil en investissement : reste factuel, mentionne le
+            risque, ne dis jamais d'acheter ou de vendre.
+
+            STYLE : français simple, phrases courtes, sans jargon. Chaque "rationale" ≤ 20 mots.
+
+            Horizons demandés (utilise exactement ces libellés) : $horizons.
+            Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown) :
+            {"horizons":[
+              {"label":"1 semaine","opportunities":[
+                {"symbol":"TICKER","name":"Nom","potentialPct":6.0,"rationale":"raison courte"}]},
+              {"label":"1 mois","opportunities":[...]},
+              {"label":"6 mois","opportunities":[...]},
+              {"label":"1 an","opportunities":[...]}]}
+            "potentialPct" est le potentiel de hausse estimé en % (nombre spéculatif ; null si inconnu).
+            Vise 2 à 4 idées par horizon, classées du plus fort potentiel au plus faible.
+        """.trimIndent()
+
+        val user = buildString {
+            if (symbols.isNotEmpty()) {
+                append("Liste de suivi de l'utilisateur (${symbols.size} actifs) :\n")
+                symbols.forEach { s ->
+                    val q = quotes[s]
+                    append("- $s (${marketOf(s).label})")
+                    if (q != null) {
+                        append(" : ${fmt(q.price)}")
+                        q.dayChangePct?.let { append(" (${signedPct(it)})") }
+                    }
+                    append("\n")
+                }
+            } else {
+                append("L'utilisateur ne suit aucun actif pour l'instant.\n")
+            }
+            if (previous != null && previous.horizons.isNotEmpty()) {
+                append("\nPrévision précédente (${agoFr(previousTs)}) :\n")
+                previous.horizons.forEach { h ->
+                    val names = h.opportunities.joinToString(", ") { it.symbol }
+                    if (names.isNotBlank()) append("- ${h.label} : $names\n")
+                }
+                append("Réévalue ces idées avec les informations récentes : conserve celles qui tiennent, ")
+                append("retire celles qui ne sont plus pertinentes, ajoute les nouvelles.\n")
+            }
+            append("\nRecherche les analyses et actualités récentes, puis rends l'objet JSON demandé ")
+            append("avec les opportunités les plus prometteuses par horizon (liste ET hors liste).")
+        }
+
+        request(system, user, apiKey, model, maxTokens = 3000).mapCatching { raw ->
+            val json = extractJson(raw.text)
+                ?: return@mapCatching ForecastAdvice(emptyList(), raw.sources)
+            ForecastAdvice(
+                horizons = parseHorizons(json.optJSONArray("horizons")),
                 sources = raw.sources
             )
         }
@@ -308,6 +396,37 @@ class AiTrendApi(
         return out
     }
 
+    private fun parseHorizons(arr: JSONArray?): List<HorizonForecast> {
+        arr ?: return emptyList()
+        val out = ArrayList<HorizonForecast>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val label = o.optString("label").trim()
+            if (label.isEmpty()) continue
+            out.add(HorizonForecast(label, parseOpportunities(o.optJSONArray("opportunities"))))
+        }
+        return out
+    }
+
+    private fun parseOpportunities(arr: JSONArray?): List<Opportunity> {
+        arr ?: return emptyList()
+        val out = ArrayList<Opportunity>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val symbol = o.optString("symbol").trim().uppercase()
+            if (symbol.isEmpty()) continue
+            out.add(
+                Opportunity(
+                    symbol = symbol,
+                    name = o.optString("name").trim(),
+                    potentialPct = if (o.has("potentialPct") && !o.isNull("potentialPct")) o.optDouble("potentialPct") else null,
+                    rationale = o.optString("rationale").trim()
+                )
+            )
+        }
+        return out
+    }
+
     private fun httpErrorMessage(code: Int, body: String): String {
         val apiMsg = try {
             JSONObject(body).optJSONObject("error")?.optString("message")
@@ -326,6 +445,17 @@ class AiTrendApi(
     private fun fmt(v: Double): String = String.format(Locale.US, "%,.2f", v)
     private fun fmt1(v: Double): String = String.format(Locale.US, "%.1f", v)
     private fun signedPct(v: Double): String = String.format(Locale.US, "%+.2f %%", v)
+
+    /** Rough French age of a cached result, for the "previous result" prompt context. */
+    private fun agoFr(ts: Long?): String {
+        ts ?: return "précédemment"
+        val days = (System.currentTimeMillis() - ts) / 86_400_000L
+        return when {
+            days <= 0L -> "aujourd'hui"
+            days == 1L -> "hier"
+            else -> "il y a $days jours"
+        }
+    }
 
     private companion object {
         val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()

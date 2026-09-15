@@ -2,11 +2,14 @@ package com.deviloufr.markettracker.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingFlat
@@ -112,6 +115,52 @@ fun BulletList(items: List<String>) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(item, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * One asset row used by the movers and opportunities lists: symbol + % (colored) + name/note,
+ * with a "Suivi" tag when tracked or an "Ajouter" action to add it to the watchlist.
+ */
+@Composable
+fun AiAssetRow(
+    symbol: String,
+    name: String,
+    pct: Double?,
+    note: String,
+    tracked: Boolean,
+    onAdd: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(symbol, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                pct?.let {
+                    Text(
+                        fmtPct(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (it >= 0) Gain else Loss,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            val sub = listOfNotNull(name.ifBlank { null }, note.ifBlank { null }).joinToString(" — ")
+            if (sub.isNotBlank()) {
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (tracked) {
+            Text("Suivi", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        } else {
+            TextButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Text("Ajouter", style = MaterialTheme.typography.labelSmall)
             }
         }
     }
