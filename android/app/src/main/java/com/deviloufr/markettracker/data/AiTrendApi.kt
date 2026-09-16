@@ -270,6 +270,85 @@ class AiTrendApi(
     }
 
     /**
+     * Portfolio outlook: for each horizon (1 mois, 6 mois, 1 an), the expected trajectory of the
+     * user's OWN holdings — a projected move and short rationale per held position. Uses only the
+     * held [symbols]; anything the model adds off-list is filtered out. Speculative, informational.
+     */
+    suspend fun portfolioForecast(
+        symbols: List<String>,
+        quotes: Map<String, Quote>,
+        apiKey: String,
+        model: String,
+        previous: ForecastAdvice? = null,
+        previousTs: Long? = null
+    ): Result<ForecastAdvice> = withContext(Dispatchers.IO) {
+        if (symbols.isEmpty()) {
+            return@withContext Result.failure(
+                Exception("Aucune position à analyser. Importez ou ajoutez des positions.")
+            )
+        }
+        val horizons = PORTFOLIO_HORIZONS.joinToString(", ")
+        val system = """
+            Tu es un analyste de marché prudent qui explique simplement. On te fournit le PORTEFEUILLE
+            de l'utilisateur (les actifs qu'il DÉTIENT). Ta mission : pour chaque horizon, estimer la
+            TRAJECTOIRE probable de CHACUNE de ces positions. Utilise l'outil de recherche web pour
+            trouver analyses et actualités récentes (résultats, valorisation, momentum, secteur…).
+
+            RÈGLE ABSOLUE : n'évalue QUE les actifs détenus listés ci-dessous. N'ajoute aucun autre
+            actif. Donne une estimation pour chaque position à chaque horizon.
+
+            Ce sont des scénarios spéculatifs, PAS un conseil en investissement : reste factuel,
+            explique le raisonnement, ne dis jamais d'acheter ou de vendre.
+
+            STYLE : français simple, phrases courtes, sans jargon. Chaque "rationale" ≤ 20 mots.
+
+            Horizons demandés (utilise exactement ces libellés) : $horizons.
+            Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown) :
+            {"horizons":[
+              {"label":"1 mois","opportunities":[
+                {"symbol":"TICKER","name":"Nom","potentialPct":-4.0,"rationale":"raison courte"}]},
+              {"label":"6 mois","opportunities":[...]},
+              {"label":"1 an","opportunities":[...]}]}
+            "potentialPct" est la variation projetée en % (nombre spéculatif, POSITIF ou NÉGATIF ;
+            null si inconnu). Classe du plus prometteur au plus risqué. Réutilise EXACTEMENT les
+            tickers Yahoo Finance fournis.
+        """.trimIndent()
+
+        val user = buildString {
+            append("Portefeuille de l'utilisateur — actifs DÉTENUS à évaluer (${symbols.size}) :\n")
+            symbols.forEach { s ->
+                val q = quotes[s]
+                append("- $s (${marketOf(s).label})")
+                if (q != null) {
+                    append(" : ${fmt(q.price)}")
+                    q.dayChangePct?.let { append(" (${signedPct(it)})") }
+                }
+                append("\n")
+            }
+            if (previous != null && previous.horizons.isNotEmpty()) {
+                append("\nPrévision précédente (${agoFr(previousTs)}) :\n")
+                previous.horizons.forEach { h ->
+                    val names = h.opportunities.joinToString(", ") { it.symbol }
+                    if (names.isNotBlank()) append("- ${h.label} : $names\n")
+                }
+                append("Réévalue avec les informations récentes et souligne ce qui a changé.\n")
+            }
+            append("\nÉvalue CHAQUE position ci-dessus sur $horizons, puis rends l'objet JSON demandé.")
+        }
+
+        request(system, user, apiKey, model, maxTokens = 3000).mapCatching { raw ->
+            val json = extractJson(raw.text)
+                ?: return@mapCatching ForecastAdvice(emptyList(), raw.sources)
+            // Safety net: only surface the user's own holdings, even if the model wanders off-list.
+            val held = symbols.mapTo(HashSet()) { it.trim().uppercase() }
+            val horizonsOut = parseHorizons(json.optJSONArray("horizons")).map { h ->
+                h.copy(opportunities = h.opportunities.filter { it.symbol in held })
+            }
+            ForecastAdvice(horizons = horizonsOut, sources = raw.sources)
+        }
+    }
+
+    /**
      * Downside-risk radar: among the user's **tracked** assets, the ones with the highest risk of
      * a near-term decline, per market analytics + news. The watchlist [symbols] are the candidate
      * pool — only tracked symbols are surfaced (anything off-list is filtered out below). Speculative.
@@ -570,5 +649,8 @@ class AiTrendApi(
 
     private companion object {
         val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /** Horizons for the portfolio outlook forecast, in display order. */
+        val PORTFOLIO_HORIZONS = listOf("1 mois", "6 mois", "1 an")
     }
 }

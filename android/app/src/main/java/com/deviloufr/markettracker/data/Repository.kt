@@ -77,6 +77,11 @@ class Repository private constructor(private val appContext: Context) {
         .map { prefs -> prefs[Keys.AI_RISK]?.let(::parseRisk) }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    /** Cached AI outlook for the held portfolio (1 mois/6 mois/1 an), persisted across navigation. */
+    val aiPortfolioForecast: StateFlow<CachedForecast?> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.AI_PF_FORECAST]?.let(::parseForecast) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     fun recordQuote(quote: Quote) {
         _quotes.value = _quotes.value.toMutableMap().apply { put(quote.symbol, quote) }
     }
@@ -178,6 +183,13 @@ class Repository private constructor(private val appContext: Context) {
         }
     }
 
+    /** Persist a freshly generated portfolio-outlook forecast. */
+    suspend fun savePortfolioForecast(forecast: ForecastAdvice) {
+        appContext.dataStore.edit { prefs ->
+            prefs[Keys.AI_PF_FORECAST] = forecastToJson(forecast, System.currentTimeMillis()).toString()
+        }
+    }
+
     suspend fun setMonitoring(on: Boolean) {
         appContext.dataStore.edit { it[Keys.MONITORING] = on }
     }
@@ -214,6 +226,7 @@ private object Keys {
     val AI_BRIEF = stringPreferencesKey("ai_brief")
     val AI_FORECAST = stringPreferencesKey("ai_forecast")
     val AI_RISK = stringPreferencesKey("ai_risk")
+    val AI_PF_FORECAST = stringPreferencesKey("ai_pf_forecast")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
     val TRADES = stringPreferencesKey("trades")

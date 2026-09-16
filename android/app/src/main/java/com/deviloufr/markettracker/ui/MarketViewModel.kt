@@ -55,6 +55,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val aiBrief = repo.aiBrief
     val aiForecast = repo.aiForecast
     val aiRisk = repo.aiRisk
+    val aiPortfolioForecast = repo.aiPortfolioForecast
 
     /** Per-symbol intraday series driving the watchlist row sparklines. */
     private val _sparklines = MutableStateFlow<Map<String, List<PricePoint>>>(emptyMap())
@@ -74,12 +75,15 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
         _update.value.let { it is UpdateState.Downloading || it is UpdateState.ReadyToInstall }
 
     /**
-     * Check the public releases channel for a newer build. Runs once on launch and
-     * on demand from Settings. [onResult] (optional) gets a user-facing message so
-     * the manual check can show a toast. An in-flight download/install is left
-     * untouched.
+     * Check the public releases channel for a newer build. Runs automatically each
+     * time the app comes to the foreground, and on demand from Settings. When
+     * [force] is false (the auto-check), a banner the user already closed stays
+     * closed unless the available build is newer than the one they dismissed; a
+     * manual check ([force] = true) always re-surfaces it. [onResult] (optional)
+     * gets a user-facing message so the manual check can show a toast. An in-flight
+     * download/install is left untouched.
      */
-    fun checkForUpdate(onResult: ((String) -> Unit)? = null) = viewModelScope.launch {
+    fun checkForUpdate(force: Boolean = false, onResult: ((String) -> Unit)? = null) = viewModelScope.launch {
         val busy = updateBusy()
         val latest = updateApi.fetchLatest()
         when {
@@ -87,7 +91,12 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
                 onResult?.invoke("Vérification impossible. Réessayez plus tard.")
             latest.versionCode > BuildConfig.VERSION_CODE -> {
                 if (!busy) {
-                    _updateDismissed.value = false
+                    val shown = (_update.value as? UpdateState.Available)?.release?.versionCode
+                    // Re-open a dismissed banner only for a genuinely newer build
+                    // (or when the user explicitly re-checked).
+                    if (force || shown == null || latest.versionCode > shown) {
+                        _updateDismissed.value = false
+                    }
                     _update.value = UpdateState.Available(latest)
                 }
                 onResult?.invoke("Nouvelle version disponible : ${latest.versionName}.")
@@ -326,6 +335,19 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
             watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel,
             previous = prev?.risk, previousTs = prev?.ts
         ).onSuccess { repo.saveRisk(it) }
+    }
+
+    /**
+     * Optional Claude outlook for the user's own holdings across 1 mois / 6 mois / 1 an,
+     * fed the previous forecast. Empty holdings return a failure with a French message.
+     */
+    suspend fun portfolioForecast(): Result<ForecastAdvice> {
+        val s = settings.value
+        val prev = aiPortfolioForecast.value
+        return aiApi.portfolioForecast(
+            heldSymbols(), quotes.value, s.anthropicApiKey, s.aiModel,
+            previous = prev?.forecast, previousTs = prev?.ts
+        ).onSuccess { repo.savePortfolioForecast(it) }
     }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {

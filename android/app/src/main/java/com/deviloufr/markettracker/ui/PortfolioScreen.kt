@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.deviloufr.markettracker.data.BoursoCsvParser
+import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.PortfolioMath
 import com.deviloufr.markettracker.data.Position
 import com.deviloufr.markettracker.data.Trade
@@ -171,6 +172,8 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
             )
         }
 
+        item { PortfolioForecastCard(vm = vm, hasPositions = open.isNotEmpty()) }
+
         if (open.isNotEmpty()) {
             item { SectionLabel("Positions") }
             items(open, key = { it.symbol }) { position ->
@@ -178,8 +181,7 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
                     position = position,
                     price = quotes[position.symbol]?.price,
                     onClick = { onPositionClick(position.symbol) },
-                    onBuy = { editor = EditorSeed(position.symbol, TradeSide.BUY) },
-                    onSell = { editor = EditorSeed(position.symbol, TradeSide.SELL) }
+                    onOpenBourso = { BoursoBank.open(context) }
                 )
             }
         }
@@ -331,8 +333,7 @@ private fun PositionCard(
     position: Position,
     price: Double?,
     onClick: () -> Unit,
-    onBuy: () -> Unit,
-    onSell: () -> Unit
+    onOpenBourso: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -364,9 +365,9 @@ private fun PositionCard(
                     color = if (pnl >= 0) MarketTheme.colors.gain else MarketTheme.colors.loss
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onBuy, modifier = Modifier.weight(1f)) { Text("Acheter") }
-                OutlinedButton(onClick = onSell, modifier = Modifier.weight(1f)) { Text("Vendre") }
+            OutlinedButton(onClick = onOpenBourso, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("  Ouvrir BoursoBank")
             }
         }
     }
@@ -576,6 +577,130 @@ private fun ImportPreviewDialog(
         confirmButton = { TextButton(onClick = onConfirm) { Text("Importer") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } }
     )
+}
+
+@Composable
+private fun PortfolioForecastCard(vm: MarketViewModel, hasPositions: Boolean) {
+    val settings by vm.settings.collectAsState()
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<AiUiState<ForecastAdvice>>(AiUiState.Idle) }
+
+    // Restore the last generated forecast so it survives navigation/restart.
+    val cached = vm.aiPortfolioForecast.collectAsState().value
+    LaunchedEffect(cached) {
+        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.forecast)
+    }
+
+    fun run() {
+        state = AiUiState.Loading
+        scope.launch {
+            state = vm.portfolioForecast().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Prévision indisponible.") }
+            )
+        }
+    }
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "Prévision IA du portefeuille",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "Trajectoire estimée de vos positions à 1 mois, 6 mois et 1 an, d'après les analyses " +
+                    "et actualités du marché. Scénarios spéculatifs, pas un conseil en investissement.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            when {
+                settings.anthropicApiKey.isBlank() -> Text(
+                    "Ajoutez votre clé API Anthropic dans Réglages pour générer la prévision.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                !hasPositions -> Text(
+                    "Ajoutez ou importez des positions pour générer une prévision.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                else -> {
+                    when (val s = state) {
+                        AiUiState.Idle -> OutlinedButton(onClick = { run() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("🔮  Générer la prévision")
+                        }
+                        AiUiState.Loading -> Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text("Analyse de vos positions sur le web…", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        is AiUiState.Error -> AiErrorRow(s.message) { run() }
+                        is AiUiState.Success -> PortfolioForecastContent(
+                            f = s.data,
+                            generatedAt = cached?.ts,
+                            onRefresh = { run() }
+                        )
+                    }
+                    AiDisclaimer()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortfolioForecastContent(f: ForecastAdvice, generatedAt: Long?, onRefresh: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (f.horizons.isEmpty()) {
+            Text("Aucune prévision disponible.", style = MaterialTheme.typography.bodyMedium)
+        }
+        f.horizons.forEach { h ->
+            SectionLabel(h.label)
+            if (h.opportunities.isEmpty()) {
+                Text("—", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                h.opportunities.forEach { op ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AssetLogo(symbol = op.symbol, size = 28.dp, shape = RoundedCornerShape(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(op.symbol, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                op.potentialPct?.let { PctBadge(it) }
+                            }
+                            if (op.rationale.isNotBlank()) {
+                                Text(
+                                    op.rationale,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        AiSources(f.sources)
+        if (generatedAt != null) {
+            Text(
+                "Généré ${timeAgo(generatedAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text("Actualiser la prévision")
+        }
+    }
 }
 
 // --- Small formatting helpers local to the portfolio -----------------------------------------
