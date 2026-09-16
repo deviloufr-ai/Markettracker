@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exposes the downloaded update APK (app-specific external files) to the
+     package installer via FileProvider. Path matches UpdateInstaller.REL_PATH. -->
+<paths>
+    <external-files-path name="updates" path="updates/" />
+</paths>

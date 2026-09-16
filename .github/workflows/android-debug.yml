@@ -1,8 +1,10 @@
 name: Build debug APK
 
+# Manual-only. The canonical build+publish channel is "Build Android APK"
+# (android.yml), which also publishes the in-app update release. This workflow
+# is kept as a manual fallback; running it on every push would advance a second,
+# separate run-number counter and confuse the app's versionCode comparison.
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:

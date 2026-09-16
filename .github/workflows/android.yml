@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the release notes can list recent commits
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -63,3 +65,50 @@ jobs:
           name: MarketTracker-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # --- In-app update channel ---------------------------------------------
+      # Stage a fixed-name APK plus a latest.json manifest, then publish both to
+      # the PUBLIC releases repo. The app reads them from the stable
+      # `releases/latest/download/…` URLs (see UpdateApi.kt). versionCode is the
+      # run number, matching the value baked into the APK above, so the app can
+      # tell when a newer build exists.
+      - name: Stage release assets
+        id: stage
+        working-directory: android
+        run: |
+          set -e
+          VN=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle | head -1)
+          VC="${{ github.run_number }}"
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/MarketTracker.apk
+          NOTES=$(git log -8 --pretty=format:'- %s' | tr -d '\r')
+          jq -n \
+            --argjson versionCode "$VC" \
+            --arg versionName "$VN" \
+            --arg notes "$NOTES" \
+            --arg apkUrl "https://github.com/deviloufr-ai/markettracker-releases/releases/latest/download/MarketTracker.apk" \
+            '{versionCode: $versionCode, versionName: $versionName, notes: $notes, apkUrl: $apkUrl}' \
+            > out/latest.json
+          {
+            echo "tag=v${VN}-b${VC}"
+            echo "title=MarketTracker ${VN} (build ${VC})"
+          } >> "$GITHUB_OUTPUT"
+          echo "----- latest.json -----"; cat out/latest.json
+
+      - name: Publish to public releases repo
+        working-directory: android/out
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "RELEASES_TOKEN secret not set — skipping in-app update publish."
+            echo "(The APK is still available as the build artifact above.)"
+            exit 0
+          fi
+          set -e
+          NOTES=$(git log -8 --pretty=format:'- %s' | tr -d '\r')
+          gh release create "${{ steps.stage.outputs.tag }}" \
+            MarketTracker.apk latest.json \
+            --repo deviloufr-ai/markettracker-releases \
+            --title "${{ steps.stage.outputs.title }}" \
+            --notes "$NOTES"

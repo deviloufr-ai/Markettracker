@@ -21,9 +21,14 @@ import com.deviloufr.markettracker.data.TechnicalAnalysis
 import com.deviloufr.markettracker.data.TechnicalSignals
 import com.deviloufr.markettracker.data.Trade
 import com.deviloufr.markettracker.data.TrendAnalysis
+import com.deviloufr.markettracker.BuildConfig
+import com.deviloufr.markettracker.data.UpdateApi
 import com.deviloufr.markettracker.notify.WhatsAppSender
 import com.deviloufr.markettracker.service.MonitorService
+import com.deviloufr.markettracker.update.UpdateInstaller
+import com.deviloufr.markettracker.update.UpdateState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -36,6 +41,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = Repository.get(app)
     private val api = PriceApi()
     private val aiApi = AiTrendApi()
+    private val updateApi = UpdateApi()
 
     val quotes = repo.quotes
     val watchlist = repo.watchlist
@@ -50,6 +56,89 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     /** Per-symbol intraday series driving the watchlist row sparklines. */
     private val _sparklines = MutableStateFlow<Map<String, List<PricePoint>>>(emptyMap())
     val sparklines = _sparklines.asStateFlow()
+
+    // --- App updates -------------------------------------------------------------------------
+
+    /** Current in-app updater state (drives the update banner). */
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update = _update.asStateFlow()
+
+    /** True once the user closes the banner for the current build (until a newer one appears). */
+    private val _updateDismissed = MutableStateFlow(false)
+    val updateDismissed = _updateDismissed.asStateFlow()
+
+    private fun updateBusy(): Boolean =
+        _update.value.let { it is UpdateState.Downloading || it is UpdateState.ReadyToInstall }
+
+    /**
+     * Check the public releases channel for a newer build. Runs once on launch and
+     * on demand from Settings. [onResult] (optional) gets a user-facing message so
+     * the manual check can show a toast. An in-flight download/install is left
+     * untouched.
+     */
+    fun checkForUpdate(onResult: ((String) -> Unit)? = null) = viewModelScope.launch {
+        val busy = updateBusy()
+        val latest = updateApi.fetchLatest()
+        when {
+            latest == null ->
+                onResult?.invoke("Vérification impossible. Réessayez plus tard.")
+            latest.versionCode > BuildConfig.VERSION_CODE -> {
+                if (!busy) {
+                    _updateDismissed.value = false
+                    _update.value = UpdateState.Available(latest)
+                }
+                onResult?.invoke("Nouvelle version disponible : ${latest.versionName}.")
+            }
+            else -> {
+                if (!busy && _update.value is UpdateState.Available) _update.value = UpdateState.Idle
+                onResult?.invoke("Application à jour (v${BuildConfig.VERSION_NAME}).")
+            }
+        }
+    }
+
+    /** Hide the update banner for this build (a newer build re-shows it). */
+    fun dismissUpdate() { _updateDismissed.value = true }
+
+    /** Download the available (or previously failed) build's APK, then launch the installer. */
+    fun downloadUpdate() {
+        val release = (_update.value as? UpdateState.Available)?.release
+            ?: (_update.value as? UpdateState.Failed)?.release
+            ?: return
+        val ctx = getApplication<Application>()
+        _updateDismissed.value = false
+        _update.value = UpdateState.Downloading(release, -1f)
+        viewModelScope.launch {
+            val id = UpdateInstaller.enqueue(ctx, release)
+            if (id == null) {
+                _update.value = UpdateState.Failed(release, "Échec du téléchargement.")
+                return@launch
+            }
+            while (true) {
+                val s = UpdateInstaller.query(ctx, id)
+                when {
+                    s.failed -> {
+                        _update.value = UpdateState.Failed(release, "Échec du téléchargement.")
+                        break
+                    }
+                    s.done && s.fileUri != null -> {
+                        _update.value = UpdateState.ReadyToInstall(release, s.fileUri)
+                        UpdateInstaller.install(ctx, s.fileUri)
+                        break
+                    }
+                    else -> {
+                        _update.value = UpdateState.Downloading(release, s.progress)
+                        delay(500)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Re-launch the installer for an already-downloaded build (e.g. after granting the permission). */
+    fun installReady() {
+        val st = _update.value as? UpdateState.ReadyToInstall ?: return
+        UpdateInstaller.install(getApplication<Application>(), st.fileUri)
+    }
 
     fun addTicker(symbol: String) = viewModelScope.launch { repo.addTicker(symbol) }
     fun removeTicker(symbol: String) = viewModelScope.launch { repo.removeTicker(symbol) }

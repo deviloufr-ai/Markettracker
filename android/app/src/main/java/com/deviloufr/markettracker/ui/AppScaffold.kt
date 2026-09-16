@@ -2,6 +2,8 @@ package com.deviloufr.markettracker.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -18,6 +20,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +45,9 @@ fun AppScaffold(vm: MarketViewModel = viewModel()) {
     var detailSymbol by remember { mutableStateOf<String?>(null) }
     var showPicker by remember { mutableStateOf(false) }
     val alerts by vm.alerts.collectAsState()
+
+    // Check the releases channel for a newer build once per app launch.
+    LaunchedEffect(Unit) { vm.checkForUpdate() }
 
     // A symbol detail screen is shown on top of the tabs when one is selected.
     detailSymbol?.let { symbol ->
@@ -86,17 +92,21 @@ fun AppScaffold(vm: MarketViewModel = viewModel()) {
             }
         }
     ) { padding ->
-        Box(Modifier.padding(padding)) {
-            when (tab) {
-                Tab.WATCHLIST -> WatchlistScreen(
-                    vm,
-                    onTickerClick = { detailSymbol = it },
-                    onAddAssets = { showPicker = true }
-                )
-                Tab.AI -> AiScreen(vm, onAddAssets = { showPicker = true })
-                Tab.PORTFOLIO -> PortfolioScreen(vm, onPositionClick = { detailSymbol = it })
-                Tab.ALERTS -> AlertsScreen(vm)
-                Tab.SETTINGS -> SettingsScreen(vm)
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            // Update banner sits above the tab content, across every tab.
+            UpdateBanner(vm)
+            Box(Modifier.weight(1f)) {
+                when (tab) {
+                    Tab.WATCHLIST -> WatchlistScreen(
+                        vm,
+                        onTickerClick = { detailSymbol = it },
+                        onAddAssets = { showPicker = true }
+                    )
+                    Tab.AI -> AiScreen(vm, onAddAssets = { showPicker = true })
+                    Tab.PORTFOLIO -> PortfolioScreen(vm, onPositionClick = { detailSymbol = it })
+                    Tab.ALERTS -> AlertsScreen(vm)
+                    Tab.SETTINGS -> SettingsScreen(vm)
+                }
             }
         }
     }
