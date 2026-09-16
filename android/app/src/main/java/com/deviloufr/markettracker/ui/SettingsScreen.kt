@@ -121,7 +121,7 @@ fun SettingsScreen(vm: MarketViewModel) {
                 fontWeight = FontWeight.Medium
             )
             OutlinedButton(onClick = {
-                vm.checkForUpdate { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+                vm.checkForUpdate(force = true) { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
             }) {
                 Text("Rechercher une mise à jour")
             }
