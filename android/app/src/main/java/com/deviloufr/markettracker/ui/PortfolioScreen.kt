@@ -582,24 +582,12 @@ private fun ImportPreviewDialog(
 @Composable
 private fun PortfolioForecastCard(vm: MarketViewModel, hasPositions: Boolean) {
     val settings by vm.settings.collectAsState()
-    val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf<AiUiState<ForecastAdvice>>(AiUiState.Idle) }
 
-    // Restore the last generated forecast so it survives navigation/restart.
+    // Run-state lives in the ViewModel so it survives tab switches, navigation and restart.
+    val state by vm.portfolioForecastState.collectAsState()
     val cached = vm.aiPortfolioForecast.collectAsState().value
-    LaunchedEffect(cached) {
-        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.forecast)
-    }
 
-    fun run() {
-        state = AiUiState.Loading
-        scope.launch {
-            state = vm.portfolioForecast().fold(
-                onSuccess = { AiUiState.Success(it) },
-                onFailure = { AiUiState.Error(it.message ?: "Prévision indisponible.") }
-            )
-        }
-    }
+    fun run() = vm.runPortfolioForecast()
 
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

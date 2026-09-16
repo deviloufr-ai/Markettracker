@@ -25,13 +25,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +39,6 @@ import com.deviloufr.markettracker.data.MarketBrief
 import com.deviloufr.markettracker.data.RiskAdvice
 import com.deviloufr.markettracker.ui.theme.BrandIndigo
 import com.deviloufr.markettracker.ui.theme.IndexTint
-import kotlinx.coroutines.launch
 
 /**
  * Dedicated "Analyse IA" tab: the market brief and forward-looking opportunities,
@@ -58,24 +52,11 @@ fun AiScreen(
 ) {
     val watchlist by vm.watchlist.collectAsState()
     val settings by vm.settings.collectAsState()
-    val scope = rememberCoroutineScope()
 
-    // Brief state is hoisted so the hero trigger and the results section share it.
-    var brief by remember { mutableStateOf<AiUiState<MarketBrief>>(AiUiState.Idle) }
+    // Brief run-state lives in the ViewModel, so switching tabs mid-analysis neither cancels
+    // the request nor drops the loading/result state.
+    val brief by vm.briefState.collectAsState()
     val cachedBrief = vm.aiBrief.collectAsState().value
-    LaunchedEffect(cachedBrief) {
-        if (brief is AiUiState.Idle && cachedBrief != null) brief = AiUiState.Success(cachedBrief.brief)
-    }
-
-    fun runBrief() {
-        brief = AiUiState.Loading
-        scope.launch {
-            brief = vm.marketBrief().fold(
-                onSuccess = { AiUiState.Success(it) },
-                onFailure = { AiUiState.Error(it.message ?: "Brief indisponible.") }
-            )
-        }
-    }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -86,7 +67,7 @@ fun AiScreen(
                 aiEnabled = settings.anthropicApiKey.isNotBlank(),
                 briefLoading = brief is AiUiState.Loading,
                 hasBrief = brief is AiUiState.Success,
-                onGenerate = { runBrief() }
+                onGenerate = { vm.runBrief() }
             )
         }
         if (watchlist.isNotEmpty()) {
@@ -97,7 +78,7 @@ fun AiScreen(
                     tracked = watchlist.toSet(),
                     generatedAt = cachedBrief?.ts,
                     onAdd = { vm.addTicker(it) },
-                    onRetry = { runBrief() }
+                    onRetry = { vm.runBrief() }
                 )
             }
         } else {
@@ -304,24 +285,12 @@ private fun MarketBriefContent(
 @Composable
 private fun OpportunitiesCard(vm: MarketViewModel, watchlist: List<String>) {
     val settings by vm.settings.collectAsState()
-    val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf<AiUiState<ForecastAdvice>>(AiUiState.Idle) }
 
-    // Restore the last generated forecast so it survives navigation/restart.
+    // Run-state lives in the ViewModel so it survives tab switches, navigation and restart.
+    val state by vm.forecastState.collectAsState()
     val cached = vm.aiForecast.collectAsState().value
-    LaunchedEffect(cached) {
-        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.forecast)
-    }
 
-    fun run() {
-        state = AiUiState.Loading
-        scope.launch {
-            state = vm.forecastAdvice().fold(
-                onSuccess = { AiUiState.Success(it) },
-                onFailure = { AiUiState.Error(it.message ?: "Opportunités indisponibles.") }
-            )
-        }
-    }
+    fun run() = vm.runForecast()
 
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -417,24 +386,12 @@ private fun ForecastContent(
 @Composable
 private fun RisksCard(vm: MarketViewModel) {
     val settings by vm.settings.collectAsState()
-    val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf<AiUiState<RiskAdvice>>(AiUiState.Idle) }
 
-    // Restore the last generated risk advice so it survives navigation/restart.
+    // Run-state lives in the ViewModel so it survives tab switches, navigation and restart.
+    val state by vm.riskState.collectAsState()
     val cached = vm.aiRisk.collectAsState().value
-    LaunchedEffect(cached) {
-        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.risk)
-    }
 
-    fun run() {
-        state = AiUiState.Loading
-        scope.launch {
-            state = vm.riskAdvice().fold(
-                onSuccess = { AiUiState.Success(it) },
-                onFailure = { AiUiState.Error(it.message ?: "Risques indisponibles.") }
-            )
-        }
-    }
+    fun run() = vm.runRisk()
 
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

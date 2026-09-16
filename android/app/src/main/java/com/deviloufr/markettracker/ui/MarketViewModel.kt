@@ -61,6 +61,88 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     private val _sparklines = MutableStateFlow<Map<String, List<PricePoint>>>(emptyMap())
     val sparklines = _sparklines.asStateFlow()
 
+    // --- AI analysis run-state ---------------------------------------------------------------
+    // Both the UI state and the coroutines that produce it live in the ViewModel (viewModelScope),
+    // so leaving an AI screen — e.g. switching bottom-nav tabs, which drops it from composition —
+    // never cancels an in-flight analysis nor loses its loading/result state. Each flow is seeded
+    // from the last saved result so a completed analysis reappears when the screen comes back.
+
+    private val _briefState = MutableStateFlow<AiUiState<MarketBrief>>(AiUiState.Idle)
+    val briefState = _briefState.asStateFlow()
+
+    private val _forecastState = MutableStateFlow<AiUiState<ForecastAdvice>>(AiUiState.Idle)
+    val forecastState = _forecastState.asStateFlow()
+
+    private val _riskState = MutableStateFlow<AiUiState<RiskAdvice>>(AiUiState.Idle)
+    val riskState = _riskState.asStateFlow()
+
+    private val _portfolioForecastState = MutableStateFlow<AiUiState<ForecastAdvice>>(AiUiState.Idle)
+    val portfolioForecastState = _portfolioForecastState.asStateFlow()
+
+    init {
+        // Surface the last saved result when a screen first appears, without re-running it.
+        viewModelScope.launch {
+            aiBrief.collect { c -> if (c != null && _briefState.value is AiUiState.Idle) _briefState.value = AiUiState.Success(c.brief) }
+        }
+        viewModelScope.launch {
+            aiForecast.collect { c -> if (c != null && _forecastState.value is AiUiState.Idle) _forecastState.value = AiUiState.Success(c.forecast) }
+        }
+        viewModelScope.launch {
+            aiRisk.collect { c -> if (c != null && _riskState.value is AiUiState.Idle) _riskState.value = AiUiState.Success(c.risk) }
+        }
+        viewModelScope.launch {
+            aiPortfolioForecast.collect { c -> if (c != null && _portfolioForecastState.value is AiUiState.Idle) _portfolioForecastState.value = AiUiState.Success(c.forecast) }
+        }
+    }
+
+    /** Launch the watchlist market brief in [viewModelScope]. No-op while one is already running. */
+    fun runBrief() {
+        if (_briefState.value is AiUiState.Loading) return
+        _briefState.value = AiUiState.Loading
+        viewModelScope.launch {
+            _briefState.value = marketBrief().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Brief indisponible.") }
+            )
+        }
+    }
+
+    /** Launch the opportunities forecast in [viewModelScope]. No-op while one is already running. */
+    fun runForecast() {
+        if (_forecastState.value is AiUiState.Loading) return
+        _forecastState.value = AiUiState.Loading
+        viewModelScope.launch {
+            _forecastState.value = forecastAdvice().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Opportunités indisponibles.") }
+            )
+        }
+    }
+
+    /** Launch the downside-risk radar in [viewModelScope]. No-op while one is already running. */
+    fun runRisk() {
+        if (_riskState.value is AiUiState.Loading) return
+        _riskState.value = AiUiState.Loading
+        viewModelScope.launch {
+            _riskState.value = riskAdvice().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Risques indisponibles.") }
+            )
+        }
+    }
+
+    /** Launch the portfolio outlook in [viewModelScope]. No-op while one is already running. */
+    fun runPortfolioForecast() {
+        if (_portfolioForecastState.value is AiUiState.Loading) return
+        _portfolioForecastState.value = AiUiState.Loading
+        viewModelScope.launch {
+            _portfolioForecastState.value = portfolioForecast().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Prévision indisponible.") }
+            )
+        }
+    }
+
     // --- App updates -------------------------------------------------------------------------
 
     /** Current in-app updater state (drives the update banner). */
