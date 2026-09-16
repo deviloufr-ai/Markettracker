@@ -52,7 +52,8 @@ data class DraftTrade(
     val price: Double,
     val ts: Long,
     val fees: Double,
-    val label: String
+    val label: String,
+    val note: String = ""
 ) {
     /** True when [rawSymbol] is an ISIN (needs a lookup to become a Yahoo ticker). */
     val isIsin: Boolean get() = ISIN_REGEX.matches(rawSymbol)
@@ -62,55 +63,83 @@ data class DraftTrade(
     }
 }
 
-/** Outcome of parsing a CSV: the rows we understood, plus how many we couldn't. */
+/**
+ * Outcome of parsing an export: the rows we understood, how many we couldn't, and
+ * whether the file was a positions [snapshot] (opening positions, replaces the
+ * previous snapshot on import) rather than an operations history.
+ */
 data class BoursoParseResult(
     val trades: List<DraftTrade>,
     val skipped: Int,
-    val error: String? = null
+    val error: String? = null,
+    val snapshot: Boolean = false
 )
 
 /**
- * Tolerant parser for BoursoBank's *bourse* CSV exports (order/operation
- * history). The exact columns vary by account and over time, so rather than
- * hard-coding one layout we detect the delimiter and fuzzy-match French/English
- * header names, and parse French-formatted numbers (`1 234,56`) and dates
- * (`dd/mm/yyyy`). Unrecognised rows are counted in [BoursoParseResult.skipped]
- * instead of failing the whole import.
+ * Tolerant parser for BoursoBank *bourse* exports. Handles two shapes:
+ *  - a **positions snapshot** (columns `name, isin, quantity, buyingPrice, …`, no
+ *    buy/sell side) → one opening BUY per holding at its PRU (`buyingPrice`);
+ *  - an **operations history** (a `sens`/side column) → one trade per row.
+ * The exact columns vary by account and over time, so we fuzzy-match FR/EN header
+ * names and parse French numbers (`1 234,56`), `dd/mm/yyyy` dates and Excel serial
+ * dates. Rows we can't read are counted in [BoursoParseResult.skipped] rather than
+ * failing the whole import. [parseRows] is fed by both the CSV and XLSX readers.
  */
 object BoursoCsvParser {
+
+    /** Note tag marking trades synthesised from a positions snapshot (replaced on re-import). */
+    const val SNAPSHOT_NOTE = "BoursoBank (position)"
+
+    /** Note tag for trades imported from an operations history. */
+    const val HISTORY_NOTE = "BoursoBank"
 
     // Header synonyms, accent-stripped and lowercased. First match wins.
     private val ISIN = setOf("isin", "code isin", "codeisin")
     private val CODE = setOf("code", "symbole", "symbol", "mnemo", "mnemonique", "ticker")
-    private val LABEL = setOf("libelle", "libelle valeur", "valeur", "designation", "nom", "instrument")
-    private val SIDE = setOf("sens", "operation", "type operation", "nature", "type", "sens operation")
+    private val LABEL = setOf("libelle", "valeur", "designation", "nom", "instrument", "name", "intitule")
+    private val SIDE = setOf("sens", "operation", "type operation", "nature", "sens operation")
     private val QTY = setOf("quantite", "qte", "quantity", "nombre", "nb", "nombre de titres")
+    private val COST = setOf(
+        "buyingprice", "buying price", "pru", "prix de revient", "prix de revient unitaire",
+        "prix d achat", "prix achat", "cours d achat", "prix moyen"
+    )
     private val PRICE = setOf(
         "cours", "cours execution", "cours d execution", "cours de bourse", "cours execute",
         "prix", "prix unitaire", "prix d execution", "prix execution", "price"
     )
     private val FEES = setOf("frais", "courtage", "commission", "frais de courtage", "total frais")
-    private val AMOUNT = setOf("montant", "montant net", "montant brut", "montant total", "total")
+    private val AMOUNT = setOf("montant", "amount", "valorisation", "montant net", "montant brut", "montant total", "total")
     private val DATE = setOf(
-        "date", "date operation", "date execution", "date negociation", "date de negociation",
-        "date d operation", "dateop"
+        "date", "lastmovementdate", "last movement date", "date mouvement", "date operation",
+        "date execution", "date negociation", "date de negociation", "date d operation", "dateop"
     )
 
+    /** Parse a delimited-text (CSV) export. */
     fun parse(raw: String): BoursoParseResult {
         val lines = raw.split(Regex("\r\n|\n|\r")).filter { it.isNotBlank() }
         if (lines.isEmpty()) return BoursoParseResult(emptyList(), 0, "Fichier vide.")
-
         val delimiter = detectDelimiter(lines.first())
-        val header = splitLine(lines.first(), delimiter).map { normalize(it) }
+        return parseRows(lines.map { splitLine(it, delimiter) })
+    }
+
+    /**
+     * Parse already-split rows (first row = header), from a CSV or an XLSX sheet.
+     * Detects snapshot vs history from the presence of a cost column and the
+     * absence of a side column.
+     */
+    fun parseRows(rows: List<List<String>>): BoursoParseResult {
+        if (rows.isEmpty()) return BoursoParseResult(emptyList(), 0, "Fichier vide.")
+        val header = rows.first().map { normalize(it) }
 
         fun col(names: Set<String>): Int =
-            header.indexOfFirst { h -> names.any { h == it || h.contains(it) } }
+            header.indexOfFirst { h -> h.isNotEmpty() && names.any { h == it || h.contains(it) } }
 
         val iIsin = col(ISIN)
         val iCode = col(CODE)
         val iLabel = col(LABEL)
         val iSide = col(SIDE)
         val iQty = col(QTY)
+        val iCost = col(COST)
         val iPrice = col(PRICE)
         val iFees = col(FEES)
         val iAmount = col(AMOUNT)
@@ -119,35 +148,39 @@ object BoursoCsvParser {
         if (iQty < 0 || (iIsin < 0 && iCode < 0 && iLabel < 0)) {
             return BoursoParseResult(
                 emptyList(), 0,
-                "Colonnes non reconnues. En-tête lu : ${header.joinToString(" | ")}"
+                "Colonnes non reconnues. En-tête lu : ${header.filter { it.isNotEmpty() }.joinToString(" | ")}"
             )
         }
 
+        // A cost/PRU column with no buy/sell side column means this is a holdings snapshot.
+        val snapshot = iCost >= 0 && iSide < 0
+
         val out = ArrayList<DraftTrade>()
         var skipped = 0
-        for (line in lines.drop(1)) {
-            val cells = splitLine(line, delimiter)
-            fun cell(i: Int): String = if (i in cells.indices) cells[i].trim() else ""
+        for (r in rows.drop(1)) {
+            fun cell(i: Int): String = if (i in r.indices) r[i].trim() else ""
 
             val qty = parseNumber(cell(iQty))
-            val price = parseNumber(cell(iPrice)).let {
-                if (it != null && it > 0.0) it
-                else {
+            val rawSymbol = listOf(iIsin, iCode, iLabel).firstNotNullOfOrNull { idx ->
+                cell(idx).takeIf { it.isNotBlank() }
+            }?.uppercase()
+            val label = if (iLabel >= 0) cell(iLabel) else (rawSymbol ?: "")
+
+            val price = if (snapshot) {
+                parseNumber(cell(iCost))
+            } else {
+                parseNumber(cell(iPrice)) ?: run {
                     // Fall back to montant / quantité when no explicit price column.
                     val amount = parseNumber(cell(iAmount))
                     if (amount != null && qty != null && qty != 0.0) kotlin.math.abs(amount / qty) else null
                 }
             }
-            val rawSymbol = listOf(iIsin, iCode, iLabel).firstNotNullOfOrNull { idx ->
-                cell(idx).takeIf { it.isNotBlank() }
-            }?.uppercase()
 
-            if (qty == null || qty == 0.0 || price == null || rawSymbol == null) { skipped++; continue }
+            if (qty == null || qty == 0.0 || price == null || price <= 0.0 || rawSymbol == null) { skipped++; continue }
 
-            val side = detectSide(cell(iSide), parseNumber(cell(iAmount)), qty)
+            val side = if (snapshot) TradeSide.BUY else detectSide(cell(iSide), parseNumber(cell(iAmount)), qty)
             val ts = parseDate(cell(iDate)) ?: System.currentTimeMillis()
             val fees = parseNumber(cell(iFees))?.let { kotlin.math.abs(it) } ?: 0.0
-            val label = if (iLabel >= 0) cell(iLabel) else rawSymbol
 
             out.add(
                 DraftTrade(
@@ -157,11 +190,12 @@ object BoursoCsvParser {
                     price = price,
                     ts = ts,
                     fees = fees,
-                    label = label
+                    label = label,
+                    note = if (snapshot) SNAPSHOT_NOTE else HISTORY_NOTE
                 )
             )
         }
-        return BoursoParseResult(out, skipped)
+        return BoursoParseResult(out, skipped, snapshot = snapshot)
     }
 
     private fun detectDelimiter(headerLine: String): Char =
@@ -217,10 +251,20 @@ object BoursoCsvParser {
         return t.toDoubleOrNull()
     }
 
-    /** Parse `dd/mm/yyyy`, `dd-mm-yyyy` or `yyyy-mm-dd` to epoch millis (local midnight). */
+    /**
+     * Parse `dd/mm/yyyy`, `dd-mm-yyyy`, `yyyy-mm-dd`, or an Excel serial date
+     * number (as XLSX stores dates, e.g. `46000`) to epoch millis.
+     */
     fun parseDate(s: String): Long? {
         val t = s.trim().substringBefore(' ')
         if (t.isBlank()) return null
+        // Excel serial date: bare number in a plausible range (≈1984..2065).
+        t.toDoubleOrNull()?.let { serial ->
+            if (serial in 30000.0..60000.0) {
+                // Excel day 25569 == 1970-01-01 (the 1900 date system, ignoring the 1900 leap bug).
+                return ((serial - 25569.0) * 86_400_000.0).toLong()
+            }
+        }
         val parts = t.split('/', '-').mapNotNull { it.toIntOrNull() }
         if (parts.size != 3) return null
         val (y, mo, d) = when {

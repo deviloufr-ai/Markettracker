@@ -66,9 +66,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-/** CSV MIME types BoursoBank exports have been seen labelled as (providers are inconsistent). */
-private val CSV_MIME = arrayOf(
+/** MIME types BoursoBank exports (CSV or XLSX) have been seen labelled as (providers vary). */
+private val IMPORT_MIME = arrayOf(
     "text/csv", "text/comma-separated-values", "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/plain", "application/octet-stream", "*/*"
 )
 
@@ -147,7 +148,7 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
                     Text("  Transaction")
                 }
                 OutlinedButton(
-                    onClick = { picker.launch(CSV_MIME) },
+                    onClick = { picker.launch(IMPORT_MIME) },
                     enabled = !importing,
                     modifier = Modifier.weight(1f)
                 ) {
@@ -156,14 +157,15 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
                     } else {
                         Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
-                    Text("  Importer CSV")
+                    Text("  Importer")
                 }
             }
         }
         item {
             Text(
-                "L'import lit un export bourse BoursoBank (historique des opérations/ordres). " +
-                    "Les achats/ventes réels se passent dans BoursoBank ; l'app suit vos positions et P&L.",
+                "Importez un export BoursoBank (CSV ou Excel) : un relevé de positions charge vos " +
+                    "lignes au PRU, un historique d'opérations charge vos ordres. Les achats/ventes " +
+                    "réels se passent dans BoursoBank ; l'app suit vos positions et le P&L en direct.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -213,9 +215,10 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
             result = result,
             onDismiss = { preview = null },
             onConfirm = {
-                vm.importTrades(result.rows.map { it.trade })
+                vm.importTrades(result.rows.map { it.trade }, result.snapshot)
                 preview = null
-                message = "${result.rows.size} transaction(s) importée(s)."
+                val kind = if (result.snapshot) "position(s)" else "transaction(s)"
+                message = "${result.rows.size} $kind importée(s)."
             }
         )
     }
@@ -511,11 +514,20 @@ private fun ImportPreviewDialog(
     onConfirm: () -> Unit
 ) {
     val unresolved = result.rows.count { !it.resolved }
+    val kind = if (result.snapshot) "position(s)" else "transaction(s)"
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Importer ${result.rows.size} transaction(s)") },
+        title = { Text("Importer ${result.rows.size} $kind") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (result.snapshot) {
+                    Text(
+                        "Relevé de positions : chargé au prix de revient (PRU). Remplace un import " +
+                            "de positions précédent ; vos saisies manuelles sont conservées.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 if (result.skipped > 0 || unresolved > 0) {
                     Text(
                         buildString {

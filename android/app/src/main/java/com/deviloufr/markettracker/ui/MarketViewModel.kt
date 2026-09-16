@@ -21,6 +21,7 @@ import com.deviloufr.markettracker.data.TechnicalAnalysis
 import com.deviloufr.markettracker.data.TechnicalSignals
 import com.deviloufr.markettracker.data.Trade
 import com.deviloufr.markettracker.data.TrendAnalysis
+import com.deviloufr.markettracker.data.XlsxReader
 import com.deviloufr.markettracker.BuildConfig
 import com.deviloufr.markettracker.data.UpdateApi
 import com.deviloufr.markettracker.notify.WhatsAppSender
@@ -162,24 +163,35 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
         symbols.distinct().forEach { s -> launch { api.getQuote(s)?.let { repo.recordQuote(it) } } }
     }
 
-    /** Commit reviewed import rows and warm their quotes. */
-    fun importTrades(newTrades: List<Trade>) = viewModelScope.launch {
-        repo.addTrades(newTrades)
+    /**
+     * Commit reviewed import rows and warm their quotes. A positions [snapshot]
+     * replaces the previous snapshot (so re-importing updates rather than
+     * duplicates); an operations history is appended.
+     */
+    fun importTrades(newTrades: List<Trade>, snapshot: Boolean) = viewModelScope.launch {
+        repo.addTrades(newTrades, replaceNotePrefix = if (snapshot) BoursoCsvParser.SNAPSHOT_NOTE else null)
         refreshPortfolioQuotes(newTrades.map { it.symbol })
     }
 
     /**
-     * Read and parse a BoursoBank CSV export at [uri], resolving each ISIN to a
-     * Yahoo symbol via the existing search endpoint. Returns a preview the UI can
-     * show for confirmation before anything is written to the portfolio.
+     * Read and parse a BoursoBank export at [uri] — CSV or XLSX (positions
+     * snapshot or operations history) — resolving each ISIN to a Yahoo symbol via
+     * the existing search endpoint. Returns a preview the UI can show for
+     * confirmation before anything is written to the portfolio.
      */
     suspend fun previewBoursoCsv(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
-        val text = runCatching { readTextFile(uri) }.getOrElse {
-            return@withContext ImportResult(emptyList(), 0, "Lecture du fichier impossible.")
+        val bytes = runCatching { readBytes(uri) }.getOrElse {
+            return@withContext ImportResult(emptyList(), 0, "Lecture du fichier impossible.", false)
         }
-        val parsed = BoursoCsvParser.parse(text)
+        val parsed = if (XlsxReader.looksLikeXlsx(bytes)) {
+            BoursoCsvParser.parseRows(XlsxReader.readFirstSheet(bytes))
+        } else {
+            BoursoCsvParser.parse(decodeText(bytes))
+        }
         if (parsed.trades.isEmpty()) {
-            return@withContext ImportResult(emptyList(), parsed.skipped, parsed.error ?: "Aucune transaction lisible.")
+            return@withContext ImportResult(
+                emptyList(), parsed.skipped, parsed.error ?: "Aucune transaction lisible.", parsed.snapshot
+            )
         }
         val resolved = HashMap<String, String?>()
         val rows = parsed.trades.map { d ->
@@ -195,20 +207,21 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
                     price = d.price,
                     ts = d.ts,
                     fees = d.fees,
-                    note = "BoursoBank"
+                    note = d.note
                 ),
                 label = d.label,
                 rawSymbol = d.rawSymbol,
                 resolved = !d.isIsin || symbol != null
             )
         }
-        ImportResult(rows, parsed.skipped, null)
+        ImportResult(rows, parsed.skipped, null, parsed.snapshot)
     }
 
-    private fun readTextFile(uri: Uri): String {
-        val bytes = getApplication<Application>().contentResolver
-            .openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-        // BoursoBank exports are frequently Windows-1252; fall back if UTF-8 mangles accents.
+    private fun readBytes(uri: Uri): ByteArray =
+        getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+
+    /** BoursoBank CSV exports are frequently Windows-1252; fall back if UTF-8 mangles accents. */
+    private fun decodeText(bytes: ByteArray): String {
         val utf8 = String(bytes, Charsets.UTF_8)
         return if (utf8.contains('�')) String(bytes, charset("windows-1252")) else utf8
     }
@@ -316,9 +329,13 @@ data class ImportRow(
     val resolved: Boolean   // false = ISIN we couldn't map to a Yahoo symbol (no live quote)
 )
 
-/** Result of previewing a CSV import: reviewable [rows], count [skipped], optional [error]. */
+/**
+ * Result of previewing an import: reviewable [rows], count [skipped], optional
+ * [error], and whether the source was a positions [snapshot] (vs a history).
+ */
 data class ImportResult(
     val rows: List<ImportRow>,
     val skipped: Int,
-    val error: String?
+    val error: String?,
+    val snapshot: Boolean
 )

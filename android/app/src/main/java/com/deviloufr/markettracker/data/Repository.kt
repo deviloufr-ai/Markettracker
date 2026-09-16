@@ -116,11 +116,16 @@ class Repository private constructor(private val appContext: Context) {
         }
     }
 
-    /** Append several trades at once (used by the BoursoBank CSV import). */
-    suspend fun addTrades(newTrades: List<Trade>) {
-        if (newTrades.isEmpty()) return
+    /**
+     * Append several trades at once (BoursoBank import). When [replaceNotePrefix]
+     * is given, existing trades whose note starts with it are dropped first — used
+     * to re-import a positions snapshot without duplicating opening positions.
+     */
+    suspend fun addTrades(newTrades: List<Trade>, replaceNotePrefix: String? = null) {
+        if (newTrades.isEmpty() && replaceNotePrefix == null) return
         appContext.dataStore.edit { prefs ->
-            val current = prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList()
+            var current = prefs[Keys.TRADES]?.let(::parseTrades) ?: emptyList()
+            if (replaceNotePrefix != null) current = current.filterNot { it.note.startsWith(replaceNotePrefix) }
             prefs[Keys.TRADES] = tradesToStr(newTrades + current)
         }
     }
