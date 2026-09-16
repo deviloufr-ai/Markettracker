@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.MarketBrief
+import com.deviloufr.markettracker.data.RiskAdvice
 import com.deviloufr.markettracker.ui.theme.BrandIndigo
 import com.deviloufr.markettracker.ui.theme.IndexTint
 import kotlinx.coroutines.launch
@@ -121,6 +122,9 @@ fun AiScreen(
             }
         }
         item { OpportunitiesCard(vm = vm, watchlist = watchlist) }
+        if (watchlist.isNotEmpty()) {
+            item { RisksCard(vm = vm) }
+        }
     }
 }
 
@@ -402,6 +406,111 @@ private fun ForecastContent(
         }
         TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text("Actualiser les opportunités")
+        }
+    }
+}
+
+/**
+ * Downside-risk radar: among the assets the user already tracks, the ones most at risk of a
+ * decline. The mirror of [OpportunitiesCard] (which surfaces untracked upside).
+ */
+@Composable
+private fun RisksCard(vm: MarketViewModel) {
+    val settings by vm.settings.collectAsState()
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<AiUiState<RiskAdvice>>(AiUiState.Idle) }
+
+    // Restore the last generated risk advice so it survives navigation/restart.
+    val cached = vm.aiRisk.collectAsState().value
+    LaunchedEffect(cached) {
+        if (state is AiUiState.Idle && cached != null) state = AiUiState.Success(cached.risk)
+    }
+
+    fun run() {
+        state = AiUiState.Loading
+        scope.launch {
+            state = vm.riskAdvice().fold(
+                onSuccess = { AiUiState.Success(it) },
+                onFailure = { AiUiState.Error(it.message ?: "Risques indisponibles.") }
+            )
+        }
+    }
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Risques IA — vos actifs suivis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Parmi les actifs de votre liste de suivi, ceux qui présentent un risque élevé de "
+                    + "BAISSE à court/moyen terme, d'après les analyses et actualités du marché. "
+                    + "Scénarios spéculatifs, pas un conseil en investissement.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (settings.anthropicApiKey.isBlank()) {
+                Text(
+                    "Ajoutez votre clé API Anthropic dans Réglages pour analyser les risques.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                when (val s = state) {
+                    AiUiState.Idle -> OutlinedButton(onClick = { run() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("⚠️  Analyser les risques")
+                    }
+                    AiUiState.Loading -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Analyse des risques sur le web…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    is AiUiState.Error -> AiErrorRow(s.message) { run() }
+                    is AiUiState.Success -> RiskContent(
+                        r = s.data,
+                        generatedAt = cached?.ts,
+                        onRefresh = { run() }
+                    )
+                }
+                AiDisclaimer()
+            }
+        }
+    }
+}
+
+@Composable
+private fun RiskContent(
+    r: RiskAdvice,
+    generatedAt: Long?,
+    onRefresh: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (r.warnings.isEmpty()) {
+            Text(
+                "Aucun risque marquant détecté sur vos actifs suivis.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            r.warnings.forEach { w ->
+                RiskWarningRow(
+                    symbol = w.symbol,
+                    name = w.name,
+                    downsidePct = w.downsidePct,
+                    severity = w.severity,
+                    rationale = w.rationale
+                )
+            }
+        }
+        AiSources(r.sources)
+        if (generatedAt != null) {
+            Text(
+                "Généré ${timeAgo(generatedAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onRefresh, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text("Actualiser les risques")
         }
     }
 }

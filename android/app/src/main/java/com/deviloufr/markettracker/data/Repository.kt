@@ -72,6 +72,11 @@ class Repository private constructor(private val appContext: Context) {
         .map { prefs -> prefs[Keys.AI_FORECAST]?.let(::parseForecast) }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    /** Cached downside-risk advice for tracked assets, persisted across navigation/restart. */
+    val aiRisk: StateFlow<CachedRisk?> = appContext.dataStore.data
+        .map { prefs -> prefs[Keys.AI_RISK]?.let(::parseRisk) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     fun recordQuote(quote: Quote) {
         _quotes.value = _quotes.value.toMutableMap().apply { put(quote.symbol, quote) }
     }
@@ -166,6 +171,13 @@ class Repository private constructor(private val appContext: Context) {
         }
     }
 
+    /** Persist a freshly generated downside-risk advice for tracked assets. */
+    suspend fun saveRisk(risk: RiskAdvice) {
+        appContext.dataStore.edit { prefs ->
+            prefs[Keys.AI_RISK] = riskToJson(risk, System.currentTimeMillis()).toString()
+        }
+    }
+
     suspend fun setMonitoring(on: Boolean) {
         appContext.dataStore.edit { it[Keys.MONITORING] = on }
     }
@@ -201,6 +213,7 @@ private object Keys {
     val AI_ANALYSES = stringPreferencesKey("ai_analyses")
     val AI_BRIEF = stringPreferencesKey("ai_brief")
     val AI_FORECAST = stringPreferencesKey("ai_forecast")
+    val AI_RISK = stringPreferencesKey("ai_risk")
     val WATCHLIST = stringPreferencesKey("watchlist")
     val ALERTS = stringPreferencesKey("alerts")
     val TRADES = stringPreferencesKey("trades")
@@ -467,6 +480,46 @@ private fun parseForecast(s: String): CachedForecast? = try {
     }
     CachedForecast(
         forecast = ForecastAdvice(horizons = horizons, sources = parseSources(o.optJSONArray("sources"))),
+        ts = o.optLong("ts")
+    )
+} catch (e: Exception) {
+    null
+}
+
+private fun riskToJson(r: RiskAdvice, ts: Long): JSONObject = JSONObject().apply {
+    put("ts", ts)
+    put("risks", JSONArray().apply {
+        r.warnings.forEach { w ->
+            put(JSONObject().apply {
+                put("symbol", w.symbol)
+                put("name", w.name)
+                put("downsidePct", w.downsidePct ?: JSONObject.NULL)
+                put("severity", w.severity)
+                put("rationale", w.rationale)
+            })
+        }
+    })
+    put("sources", sourcesToJson(r.sources))
+}
+
+private fun parseRisk(s: String): CachedRisk? = try {
+    val o = JSONObject(s)
+    val arr = o.optJSONArray("risks")
+    val warnings = if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { i ->
+        arr.optJSONObject(i)?.let { w ->
+            val symbol = w.optString("symbol")
+            if (symbol.isBlank()) null
+            else RiskWarning(
+                symbol = symbol,
+                name = w.optString("name"),
+                downsidePct = if (w.has("downsidePct") && !w.isNull("downsidePct")) w.optDouble("downsidePct") else null,
+                severity = w.optString("severity").ifBlank { "élevé" },
+                rationale = w.optString("rationale")
+            )
+        }
+    }
+    CachedRisk(
+        risk = RiskAdvice(warnings = warnings, sources = parseSources(o.optJSONArray("sources"))),
         ts = o.optLong("ts")
     )
 } catch (e: Exception) {

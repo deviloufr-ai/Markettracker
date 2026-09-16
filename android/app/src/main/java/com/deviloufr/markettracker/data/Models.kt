@@ -160,6 +160,29 @@ data class Opportunity(
 data class HorizonForecast(val label: String, val opportunities: List<Opportunity>)
 
 /**
+ * A downside-risk warning for a **tracked** asset: an asset in the user's watchlist that
+ * carries a high risk of decline. [downsidePct] is an estimated potential drop % (negative,
+ * e.g. -12.0), when the model gives one. [severity] is a short French level
+ * ("élevé" | "modéré" | "faible") used to color/label the warning.
+ */
+data class RiskWarning(
+    val symbol: String,
+    val name: String,
+    val downsidePct: Double?,
+    val severity: String,
+    val rationale: String
+)
+
+/**
+ * Downside-risk advice: the tracked assets with the highest risk of decrease, from market
+ * analytics + news. Speculative, informational only — not financial advice.
+ */
+data class RiskAdvice(
+    val warnings: List<RiskWarning>,
+    val sources: List<AiSource>
+)
+
+/**
  * Forward-looking "Opportunités" advice: the assets with the highest potential
  * increase per horizon, from market analytics + news. Speculative, not advice.
  */
@@ -228,3 +251,6 @@ data class CachedBrief(val brief: MarketBrief, val ts: Long)
 
 /** The forward-looking opportunities forecast kept on device with its generation time. */
 data class CachedForecast(val forecast: ForecastAdvice, val ts: Long)
+
+/** The downside-risk advice for tracked assets kept on device with its generation time. */
+data class CachedRisk(val risk: RiskAdvice, val ts: Long)

@@ -166,6 +166,64 @@ fun AiAssetRow(
     }
 }
 
+/** Color for a downside-risk severity level ("élevé" | "modéré" | "faible"). */
+@Composable
+fun severityColor(severity: String): Color {
+    val s = severity.lowercase()
+    return when {
+        s.startsWith("élev") || s.startsWith("elev") || s.startsWith("fort") -> Loss
+        s.startsWith("mod") -> Color(0xFFF59E0B) // amber — a middling risk
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+}
+
+/**
+ * One row of the downside-risk radar: a tracked asset with a high risk of decline. Shows the
+ * symbol, the estimated downside % (red), the reason, and a colored severity pill.
+ */
+@Composable
+fun RiskWarningRow(
+    symbol: String,
+    name: String,
+    downsidePct: Double?,
+    severity: String,
+    rationale: String
+) {
+    val color = severityColor(severity)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(symbol, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                downsidePct?.let {
+                    Text(
+                        fmtPct(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Loss,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            val sub = listOfNotNull(name.ifBlank { null }, rationale.ifBlank { null }).joinToString(" — ")
+            if (sub.isNotBlank()) {
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(50)) {
+            Text(
+                "Risque ${severity.ifBlank { "élevé" }}",
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
 /** Tappable list of web sources Claude cited; each opens in the browser. */
 @Composable
 fun AiSources(sources: List<AiSource>) {

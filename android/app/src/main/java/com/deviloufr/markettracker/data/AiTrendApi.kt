@@ -269,6 +269,80 @@ class AiTrendApi(
         }
     }
 
+    /**
+     * Downside-risk radar: among the user's **tracked** assets, the ones with the highest risk of
+     * a near-term decline, per market analytics + news. The watchlist [symbols] are the candidate
+     * pool — only tracked symbols are surfaced (anything off-list is filtered out below). Speculative.
+     */
+    suspend fun risks(
+        symbols: List<String>,
+        quotes: Map<String, Quote>,
+        apiKey: String,
+        model: String,
+        previous: RiskAdvice? = null,
+        previousTs: Long? = null
+    ): Result<RiskAdvice> = withContext(Dispatchers.IO) {
+        if (symbols.isEmpty()) {
+            return@withContext Result.failure(
+                Exception("Aucun actif suivi à analyser. Ajoutez des symboles à votre liste.")
+            )
+        }
+        val system = """
+            Tu es un analyste de marché prudent qui explique simplement. Ta mission : parmi les
+            actifs SUIVIS par l'utilisateur (liste fournie ci-dessous), repérer ceux qui présentent
+            un RISQUE ÉLEVÉ de BAISSE à court/moyen terme. Utilise l'outil de recherche web pour
+            trouver les analyses et actualités récentes (résultats décevants, dégradations d'analystes,
+            valorisation tendue, risques sectoriels ou réglementaires, momentum négatif…).
+
+            RÈGLE ABSOLUE : n'évalue QUE les actifs de la liste de suivi ci-dessous. Ne propose aucun
+            actif hors de cette liste. Ne retiens que ceux au risque réellement notable ; s'il n'y a
+            pas de risque marquant, renvoie une liste vide.
+
+            Ce sont des scénarios spéculatifs, PAS un conseil en investissement : reste factuel,
+            explique le risque, ne dis jamais d'acheter ou de vendre.
+
+            STYLE : français simple, phrases courtes, sans jargon. Chaque "rationale" ≤ 20 mots.
+
+            Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown) :
+            {"risks":[
+              {"symbol":"TICKER","name":"Nom","downsidePct":-15.0,"severity":"élevé",
+               "rationale":"raison courte"}]}
+            "downsidePct" est la baisse potentielle estimée en % (nombre NÉGATIF spéculatif ; null si
+            inconnu). "severity" vaut "élevé", "modéré" ou "faible". Classe du risque le plus fort au
+            plus faible. Vise 2 à 5 actifs à risque (moins s'il y en a peu).
+        """.trimIndent()
+
+        val user = buildString {
+            append("Liste de suivi de l'utilisateur — actifs à évaluer (${symbols.size}) :\n")
+            symbols.forEach { s ->
+                val q = quotes[s]
+                append("- $s (${marketOf(s).label})")
+                if (q != null) {
+                    append(" : ${fmt(q.price)}")
+                    q.dayChangePct?.let { append(" (${signedPct(it)})") }
+                }
+                append("\n")
+            }
+            if (previous != null && previous.warnings.isNotEmpty()) {
+                append("\nAlerte de risque précédente (${agoFr(previousTs)}) : ")
+                append(previous.warnings.joinToString(", ") { it.symbol })
+                append("\nRéévalue ces risques avec les informations récentes : conserve ceux qui ")
+                append("tiennent, retire ceux qui se sont dissipés, ajoute les nouveaux.\n")
+            }
+            append("\nN'évalue QUE les actifs ci-dessus. Recherche les actualités récentes, puis ")
+            append("rends l'objet JSON demandé avec les actifs suivis les plus à risque de baisse.")
+        }
+
+        request(system, user, apiKey, model, maxTokens = 2500).mapCatching { raw ->
+            val json = extractJson(raw.text)
+                ?: return@mapCatching RiskAdvice(emptyList(), raw.sources)
+            // Safety net: only ever surface tracked assets, even if the model wanders off-list.
+            val tracked = symbols.mapTo(HashSet()) { it.trim().uppercase() }
+            val warnings = parseRisks(json.optJSONArray("risks")).filter { it.symbol in tracked }
+            RiskAdvice(warnings = warnings, sources = raw.sources)
+        }
+    }
+
     // --- shared request/response plumbing ------------------------------------------------------
 
     private data class Raw(val text: String, val sources: List<AiSource>)
@@ -437,6 +511,26 @@ class AiTrendApi(
                     symbol = symbol,
                     name = o.optString("name").trim(),
                     potentialPct = if (o.has("potentialPct") && !o.isNull("potentialPct")) o.optDouble("potentialPct") else null,
+                    rationale = o.optString("rationale").trim()
+                )
+            )
+        }
+        return out
+    }
+
+    private fun parseRisks(arr: JSONArray?): List<RiskWarning> {
+        arr ?: return emptyList()
+        val out = ArrayList<RiskWarning>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val symbol = o.optString("symbol").trim().uppercase()
+            if (symbol.isEmpty()) continue
+            out.add(
+                RiskWarning(
+                    symbol = symbol,
+                    name = o.optString("name").trim(),
+                    downsidePct = if (o.has("downsidePct") && !o.isNull("downsidePct")) o.optDouble("downsidePct") else null,
+                    severity = o.optString("severity").trim().ifBlank { "élevé" },
                     rationale = o.optString("rationale").trim()
                 )
             )

@@ -16,6 +16,7 @@ import com.deviloufr.markettracker.data.PriceApi
 import com.deviloufr.markettracker.data.PricePoint
 import com.deviloufr.markettracker.data.Quote
 import com.deviloufr.markettracker.data.Repository
+import com.deviloufr.markettracker.data.RiskAdvice
 import com.deviloufr.markettracker.data.Settings
 import com.deviloufr.markettracker.data.TechnicalAnalysis
 import com.deviloufr.markettracker.data.TechnicalSignals
@@ -53,6 +54,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     val aiAnalyses = repo.aiAnalyses
     val aiBrief = repo.aiBrief
     val aiForecast = repo.aiForecast
+    val aiRisk = repo.aiRisk
 
     /** Per-symbol intraday series driving the watchlist row sparklines. */
     private val _sparklines = MutableStateFlow<Map<String, List<PricePoint>>>(emptyMap())
@@ -314,6 +316,16 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
             watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel,
             previous = prev?.forecast, previousTs = prev?.ts
         ).onSuccess { repo.saveForecast(it) }
+    }
+
+    /** Optional Claude downside-risk radar over the tracked assets, fed the previous risk advice. */
+    suspend fun riskAdvice(): Result<RiskAdvice> {
+        val s = settings.value
+        val prev = aiRisk.value
+        return aiApi.risks(
+            watchlist.value, quotes.value, s.anthropicApiKey, s.aiModel,
+            previous = prev?.risk, previousTs = prev?.ts
+        ).onSuccess { repo.saveRisk(it) }
     }
 
     fun sendTestWhatsApp(onResult: (Boolean) -> Unit) = viewModelScope.launch {
