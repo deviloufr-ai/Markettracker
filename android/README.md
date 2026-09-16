@@ -11,13 +11,13 @@ The app is built for you in the cloud by GitHub Actions on every push to `main`
 (or via **Run workflow**). Once the **in-app updates** channel is set up (below),
 the phone just installs the first APK and updates itself from then on.
 
-First install, from the public releases repo:
+First install, from the repo's Releases:
 
-1. Open `https://github.com/deviloufr-ai/markettracker-releases/releases/latest`.
+1. Open `https://github.com/deviloufr-ai/Markettracker/releases/latest`.
 2. Download **MarketTracker.apk** and tap it to install (allow "install unknown
    apps" once when prompted).
 
-Fallback (before the releases repo exists, or a one-off build): open the repo's
+Fallback (a one-off build, or while the repo is still private): open the repo's
 **Actions** tab → **Build Android APK** → the latest run → download the
 **MarketTracker-debug-apk** artifact, unzip, and install `app-debug.apk`.
 
@@ -36,22 +36,18 @@ when a newer build exists.
 
 ### One-time setup (publisher side)
 
-Because this repo is **private**, its Actions artifacts and Releases aren't
-downloadable without a login. So CI publishes the APK + manifest to a **separate
-public repo**, keeping the source private:
+The app downloads updates over plain HTTPS, so the release assets must be
+**publicly** reachable. That means the repo needs to be **public** (no secrets
+are committed — `*.keystore` and `.env` are git-ignored, and CI secrets like
+`SIGNING_KEYSTORE_B64` stay secret regardless of visibility):
 
-1. Create a public repo **`deviloufr-ai/markettracker-releases`** (empty is fine).
-2. Create a token that can write releases there — a fine-grained PAT scoped to
-   that repo with **Contents: Read and write** (a classic `repo`-scoped token
-   also works).
-3. In **this** repo: **Settings → Secrets and variables → Actions → New
-   repository secret**, name **`RELEASES_TOKEN`**, value = the token.
+- **Settings → General → Danger Zone → Change repository visibility → Public.**
 
-That's it. On the next push, **Build Android APK** publishes a GitHub Release to
-`markettracker-releases` with two assets — `MarketTracker.apk` and `latest.json`
-— which the app reads from the stable `releases/latest/download/…` URLs. If
-`RELEASES_TOKEN` isn't set, the build still succeeds and just skips publishing
-(the APK remains available as the build artifact).
+That's the only step — no token needed. On every push, **Build Android APK**
+publishes a GitHub Release on this repo with two assets, `MarketTracker.apk` and
+`latest.json`, using the built-in `GITHUB_TOKEN`. The app reads them from the
+stable `releases/latest/download/…` URLs. (Releases are created even while the
+repo is private; they just aren't downloadable until it's public.)
 
 ## First run
 

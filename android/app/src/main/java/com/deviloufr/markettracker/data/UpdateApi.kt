@@ -16,10 +16,10 @@ data class AppRelease(
 )
 
 /**
- * Reads the update manifest CI publishes to the **public** releases repo (the app
- * source stays private). The `releases/latest/download/<asset>` URLs are stable
- * redirects that always resolve to the newest GitHub Release, so the app needs
- * neither the GitHub API nor a token — a plain HTTPS GET is enough.
+ * Reads the update manifest CI publishes to the repo's **public** GitHub Releases.
+ * The `releases/latest/download/<asset>` URLs are stable redirects that always
+ * resolve to the newest release, so the app needs neither the GitHub API nor a
+ * token — a plain HTTPS GET is enough (works once the repo is public).
  */
 class UpdateApi(
     private val manifestUrl: String = DEFAULT_MANIFEST_URL,
@@ -64,8 +64,8 @@ class UpdateApi(
     }
 
     companion object {
-        /** Owner/repo of the PUBLIC releases channel (source stays private). */
-        const val RELEASES_REPO = "deviloufr-ai/markettracker-releases"
+        /** Owner/repo whose public GitHub Releases carry the builds. */
+        const val RELEASES_REPO = "deviloufr-ai/Markettracker"
 
         /** Stable "latest" manifest URL — resolves to the newest release's latest.json. */
         const val DEFAULT_MANIFEST_URL =
