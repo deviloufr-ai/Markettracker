@@ -180,8 +180,10 @@ class AiTrendApi(
     }
 
     /**
-     * Forward-looking opportunities: for each horizon (1 semaine → 1 an), the assets with the
-     * highest potential increase per market analytics + news. Speculative, informational only.
+     * Forward-looking opportunities: for each horizon (1 semaine → 1 an), assets the user does
+     * **not** already track that carry a very high potential increase, per market analytics + news.
+     * The watchlist [symbols] are passed only as an exclusion list — nothing from it is proposed,
+     * and any that slips through is filtered out below. Speculative, informational only.
      */
     suspend fun forecast(
         symbols: List<String>,
@@ -193,12 +195,20 @@ class AiTrendApi(
     ): Result<ForecastAdvice> = withContext(Dispatchers.IO) {
         val horizons = ForecastAdvice.HORIZONS.joinToString(", ")
         val system = """
-            Tu es un analyste de marché prudent qui explique simplement. À partir d'analyses de
-            marché et des actualités récentes (utilise l'outil de recherche web), propose pour CHAQUE
-            horizon les actifs présentant le plus fort potentiel de HAUSSE. Considère à la fois la
-            liste de suivi de l'utilisateur ET l'ensemble du marché (actifs hors liste). Ce sont des
-            scénarios spéculatifs, PAS un conseil en investissement : reste factuel, mentionne le
-            risque, ne dis jamais d'acheter ou de vendre.
+            Tu es un analyste de marché prudent qui explique simplement. Ta mission : DÉNICHER des
+            opportunités NOUVELLES — des actifs que l'utilisateur ne suit PAS encore et qui
+            présentent un TRÈS FORT potentiel de HAUSSE. Utilise l'outil de recherche web pour
+            balayer tout le marché (actions, ETF, cryptos, indices, matières premières…) et trouver
+            des analyses et actualités récentes.
+
+            RÈGLE ABSOLUE : ne propose JAMAIS un actif figurant dans la liste de suivi de
+            l'utilisateur (fournie ci-dessous). Ces actifs sont déjà suivis, donc EXCLUS. Cherche
+            ailleurs, y compris des valeurs moins connues à fort potentiel.
+
+            Pour CHAQUE horizon, ne retiens que des actifs HORS liste au plus fort potentiel de
+            hausse. Privilégie un potentiel élevé (vise ≥ 10 % à court terme, davantage sur les
+            horizons longs) tout en restant crédible et factuel. Ce sont des scénarios spéculatifs,
+            PAS un conseil en investissement : mentionne le risque, ne dis jamais d'acheter ou de vendre.
 
             STYLE : français simple, phrases courtes, sans jargon. Chaque "rationale" ≤ 20 mots.
 
@@ -206,17 +216,19 @@ class AiTrendApi(
             Réponds UNIQUEMENT avec un objet JSON valide (aucun texte avant ou après, pas de Markdown) :
             {"horizons":[
               {"label":"1 semaine","opportunities":[
-                {"symbol":"TICKER","name":"Nom","potentialPct":6.0,"rationale":"raison courte"}]},
+                {"symbol":"TICKER","name":"Nom","potentialPct":12.0,"rationale":"raison courte"}]},
               {"label":"1 mois","opportunities":[...]},
               {"label":"6 mois","opportunities":[...]},
               {"label":"1 an","opportunities":[...]}]}
             "potentialPct" est le potentiel de hausse estimé en % (nombre spéculatif ; null si inconnu).
-            Vise 2 à 4 idées par horizon, classées du plus fort potentiel au plus faible.
+            Vise 2 à 4 idées par horizon, classées du plus fort potentiel au plus faible. Utilise des
+            tickers Yahoo Finance valides (ex. AAPL, NVDA, MC.PA, BTC-USD).
         """.trimIndent()
 
         val user = buildString {
             if (symbols.isNotEmpty()) {
-                append("Liste de suivi de l'utilisateur (${symbols.size} actifs) :\n")
+                append("Liste de suivi de l'utilisateur — actifs à EXCLURE de tes propositions ")
+                append("(${symbols.size}) :\n")
                 symbols.forEach { s ->
                     val q = quotes[s]
                     append("- $s (${marketOf(s).label})")
@@ -226,8 +238,10 @@ class AiTrendApi(
                     }
                     append("\n")
                 }
+                append("N'inclus AUCUN de ces symboles dans ta réponse.\n")
             } else {
-                append("L'utilisateur ne suit aucun actif pour l'instant.\n")
+                append("L'utilisateur ne suit encore aucun actif : propose librement, mais ")
+                append("uniquement des idées à très fort potentiel de hausse.\n")
             }
             if (previous != null && previous.horizons.isNotEmpty()) {
                 append("\nPrévision précédente (${agoFr(previousTs)}) :\n")
@@ -235,20 +249,23 @@ class AiTrendApi(
                     val names = h.opportunities.joinToString(", ") { it.symbol }
                     if (names.isNotBlank()) append("- ${h.label} : $names\n")
                 }
-                append("Réévalue ces idées avec les informations récentes : conserve celles qui tiennent, ")
-                append("retire celles qui ne sont plus pertinentes, ajoute les nouvelles.\n")
+                append("Réévalue ces idées avec les informations récentes : conserve celles qui ")
+                append("tiennent (et restent hors liste de suivi), retire celles qui ne sont plus ")
+                append("pertinentes, ajoute de nouvelles pépites.\n")
             }
-            append("\nRecherche les analyses et actualités récentes, puis rends l'objet JSON demandé ")
-            append("avec les opportunités les plus prometteuses par horizon (liste ET hors liste).")
+            append("\nRecherche à travers tout le marché des actifs NON suivis à très fort potentiel ")
+            append("de hausse, puis rends l'objet JSON demandé (2 à 4 idées par horizon).")
         }
 
         request(system, user, apiKey, model, maxTokens = 3000).mapCatching { raw ->
             val json = extractJson(raw.text)
                 ?: return@mapCatching ForecastAdvice(emptyList(), raw.sources)
-            ForecastAdvice(
-                horizons = parseHorizons(json.optJSONArray("horizons")),
-                sources = raw.sources
-            )
+            // Safety net: never surface something already tracked, even if the model ignores the rule.
+            val excluded = symbols.mapTo(HashSet()) { it.trim().uppercase() }
+            val horizonsOut = parseHorizons(json.optJSONArray("horizons")).map { h ->
+                h.copy(opportunities = h.opportunities.filterNot { it.symbol in excluded })
+            }
+            ForecastAdvice(horizons = horizonsOut, sources = raw.sources)
         }
     }
 

@@ -321,10 +321,11 @@ private fun OpportunitiesCard(vm: MarketViewModel, watchlist: List<String>) {
 
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Opportunités IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Opportunités IA — à découvrir", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Fort potentiel de hausse estimé par horizon (1 semaine → 1 an), d'après les analyses "
-                    + "et actualités du marché. Scénarios spéculatifs, pas un conseil en investissement.",
+                "Des actifs que vous ne suivez pas encore, au très fort potentiel de hausse, par "
+                    + "horizon (1 semaine → 1 an), d'après les analyses et actualités du marché. "
+                    + "Scénarios spéculatifs, pas un conseil en investissement.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -338,7 +339,7 @@ private fun OpportunitiesCard(vm: MarketViewModel, watchlist: List<String>) {
             } else {
                 when (val s = state) {
                     AiUiState.Idle -> OutlinedButton(onClick = { run() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("🔮  Générer les opportunités")
+                        Text("🔮  Découvrir des opportunités")
                     }
                     AiUiState.Loading -> Row(
                         verticalAlignment = Alignment.CenterVertically,
