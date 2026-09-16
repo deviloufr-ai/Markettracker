@@ -20,7 +20,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +29,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.deviloufr.markettracker.update.UpdateState
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     WATCHLIST("Suivi", Icons.Filled.ShowChart),
@@ -46,8 +50,21 @@ fun AppScaffold(vm: MarketViewModel = viewModel()) {
     var showPicker by remember { mutableStateOf(false) }
     val alerts by vm.alerts.collectAsState()
 
-    // Check the releases channel for a newer build once per app launch.
-    LaunchedEffect(Unit) { vm.checkForUpdate() }
+    // Check the releases channel for a newer build every time the app comes to
+    // the foreground (cold start and each resume), not just on first composition.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                // Re-check on each foreground, but don't re-nag while the user is
+                // still looking at (or just closed) the banner for a known update.
+                val suppressed = vm.updateDismissed.value && vm.update.value is UpdateState.Available
+                if (!suppressed) vm.checkForUpdate()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // A symbol detail screen is shown on top of the tabs when one is selected.
     detailSymbol?.let { symbol ->
