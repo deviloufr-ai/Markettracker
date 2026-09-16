@@ -84,13 +84,22 @@ jobs:
           VC="${{ github.run_number }}"
           mkdir -p out
           cp app/build/outputs/apk/debug/app-debug.apk out/MarketTracker.apk
-          NOTES=$(git log -8 --pretty=format:'- %s' | tr -d '\r')
+          # Release notes (shown in the app's "Infos" modal): the top section of
+          # the French CHANGELOG.md — everything between the 1st and 2nd "## "
+          # headings, heading dropped. Fall back to recent commit subjects.
+          if [ -f ../CHANGELOG.md ]; then
+            NOTES=$(awk '/^## /{n++; if(n==2) exit; if(n==1){next}} n==1' ../CHANGELOG.md | sed -e '/^[[:space:]]*$/d')
+          fi
+          if [ -z "${NOTES:-}" ]; then
+            NOTES=$(git log -8 --pretty=format:'- %s' | tr -d '\r')
+          fi
+          printf '%s\n' "$NOTES" > out/notes.txt
           jq -n \
             --argjson versionCode "$VC" \
             --arg versionName "$VN" \
-            --arg notes "$NOTES" \
+            --rawfile notes out/notes.txt \
             --arg apkUrl "https://github.com/${{ github.repository }}/releases/latest/download/MarketTracker.apk" \
-            '{versionCode: $versionCode, versionName: $versionName, notes: $notes, apkUrl: $apkUrl}' \
+            '{versionCode: $versionCode, versionName: $versionName, notes: ($notes | rtrimstr("\n")), apkUrl: $apkUrl}' \
             > out/latest.json
           {
             echo "tag=v${VN}-b${VC}"
@@ -104,9 +113,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          NOTES=$(git log -8 --pretty=format:'- %s' | tr -d '\r')
           gh release create "${{ steps.stage.outputs.tag }}" \
             MarketTracker.apk latest.json \
             --repo "${{ github.repository }}" \
             --title "${{ steps.stage.outputs.title }}" \
-            --notes "$NOTES"
+            --notes-file notes.txt
