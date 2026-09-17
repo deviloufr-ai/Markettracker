@@ -91,9 +91,13 @@ fun PortfolioScreen(vm: MarketViewModel, onPositionClick: (String) -> Unit = {})
     var preview by remember { mutableStateOf<ImportResult?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    // Warm quotes for held symbols whenever the set of positions changes.
+    // Warm quotes for held symbols whenever the set of positions changes, and mirror
+    // holdings into the Suivi watchlist so owned assets are tracked automatically.
     LaunchedEffect(open.map { it.symbol }.toSet()) {
-        if (open.isNotEmpty()) vm.refreshPortfolioQuotes(open.map { it.symbol })
+        if (open.isNotEmpty()) {
+            vm.refreshPortfolioQuotes(open.map { it.symbol })
+            vm.syncHoldingsToWatchlist()
+        }
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->

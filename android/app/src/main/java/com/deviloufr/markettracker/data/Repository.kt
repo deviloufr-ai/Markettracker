@@ -95,6 +95,17 @@ class Repository private constructor(private val appContext: Context) {
         }
     }
 
+    /** Add several symbols to the watchlist in one edit, keeping order and skipping duplicates. */
+    suspend fun addTickers(symbols: List<String>) {
+        val clean = symbols.map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+        if (clean.isEmpty()) return
+        appContext.dataStore.edit { prefs ->
+            val current = prefs[Keys.WATCHLIST]?.let(::parseList) ?: DEFAULT_WATCHLIST
+            val added = clean.distinct().filterNot { current.contains(it) }
+            if (added.isNotEmpty()) prefs[Keys.WATCHLIST] = listToStr(current + added)
+        }
+    }
+
     suspend fun removeTicker(symbol: String) {
         appContext.dataStore.edit { prefs ->
             val current = prefs[Keys.WATCHLIST]?.let(::parseList) ?: DEFAULT_WATCHLIST

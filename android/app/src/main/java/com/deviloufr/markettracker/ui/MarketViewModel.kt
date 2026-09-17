@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.deviloufr.markettracker.data.AiTrendApi
 import com.deviloufr.markettracker.data.Asset
 import com.deviloufr.markettracker.data.BoursoCsvParser
+import com.deviloufr.markettracker.data.DraftTrade
 import com.deviloufr.markettracker.data.ForecastAdvice
 import com.deviloufr.markettracker.data.HistoryRange
 import com.deviloufr.markettracker.data.MarketBrief
@@ -242,6 +243,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     /** Record a buy/sell, then pull a fresh quote so its live P&L shows immediately. */
     fun addTrade(trade: Trade) = viewModelScope.launch {
         repo.addTrade(trade)
+        addHoldingsToWatchlist(listOf(trade.symbol))
         api.getQuote(trade.symbol)?.let { repo.recordQuote(it) }
     }
 
@@ -250,6 +252,20 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
     /** Symbols with an open (non-zero) position, derived from the recorded trades. */
     fun heldSymbols(): List<String> =
         PortfolioMath.positionsFrom(trades.value).filter { it.isOpen }.map { it.symbol }
+
+    /**
+     * Mirror holdings into the "Suivi" watchlist so owned assets are tracked
+     * automatically. Unresolved ISINs (no live quote) are skipped to keep the list
+     * clean; [addTickers] de-duplicates, so this is safe to call repeatedly.
+     */
+    fun addHoldingsToWatchlist(symbols: List<String>) = viewModelScope.launch {
+        val valid = symbols.map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() && !it.matches(DraftTrade.ISIN_REGEX) }
+        if (valid.isNotEmpty()) repo.addTickers(valid)
+    }
+
+    /** Reconcile: ensure every currently-held position is present in the watchlist. */
+    fun syncHoldingsToWatchlist() = addHoldingsToWatchlist(heldSymbols())
 
     /** Fetch quotes for the held symbols so the portfolio shows live values. */
     fun refreshPortfolioQuotes(symbols: List<String> = heldSymbols()) = viewModelScope.launch {
@@ -263,6 +279,7 @@ class MarketViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun importTrades(newTrades: List<Trade>, snapshot: Boolean) = viewModelScope.launch {
         repo.addTrades(newTrades, replaceNotePrefix = if (snapshot) BoursoCsvParser.SNAPSHOT_NOTE else null)
+        addHoldingsToWatchlist(newTrades.map { it.symbol })
         refreshPortfolioQuotes(newTrades.map { it.symbol })
     }
 
